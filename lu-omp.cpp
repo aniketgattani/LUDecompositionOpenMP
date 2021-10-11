@@ -9,66 +9,79 @@ using namespace std;
 
 #define DEFAULT_VAL 0.0
 
-int value = 0;
-
 typedef struct { vector<vector<double>> mat; } matrix;
 
-void create_matrix(matrix *A, int n){
-    A->mat.resize(n);
+void create_matrix(matrix &A, int n, int m){
+    A.mat.resize(n);
     for(int i=0; i<n; i++){
-        A->mat[i].resize(n, DEFAULT_VAL);
+        A.mat[i].resize(m, DEFAULT_VAL);
     } 
 }
 
-void swap_matrix_rows(matrix *P, int x, int y){
-    int n = P->mat.size();
+void swap_matrix_rows(matrix &P, int x, int y){
+    int n = P.mat.size();
     for(int i = 0; i < n; i++){
-        swap(P->mat[x][i], P->mat[y][i]);
+        swap(P.mat[x][i], P.mat[y][i]);
     }
 }
 
-void print_matrix(matrix *A){
-    int n = A->mat.size();
+void print_matrix(matrix &A){
+    int n = A.mat.size();
     cout<<"[";
     for(int i=0; i<n; i++){
         cout<<"[";
         for(int j=0; j<n; j++){
-            cout<<A->mat[i][j]<<", "; 
+            cout<<A.mat[i][j]<<", "; 
         }       
         cout<<"],"<<endl;
     }   
     cout<<"]"<<endl;
 }
 
-void create_matrix_mult(matrix *A, matrix *B, matrix *C){
-    int n = A->mat.size();
-    create_matrix(C, n);
+void create_matrix_mult(matrix &A, matrix &B, matrix &C){
+    int n = A.mat.size();
+    int m = B.mat[0].size();
+    int m1 = A.mat[0].size();
+    
+    create_matrix(C, n, m);
+
     for(int i=0; i<n; i++){
-        for(int j=0; j<n; j++){
-            for(int k=0; k<n; k++){
-                C->mat[i][j] += A->mat[i][k] * B->mat[k][j];
+        for(int j=0; j<m; j++){
+            for(int k=0; k<m1; k++){
+                C.mat[i][j] += A.mat[i][k] * B.mat[k][j];
             }
         }
     }
 }
+// A = A - B
+void matrix_subtract(matrix &A, matrix &B){
+    int n = A.mat.size();
+    int m = A.mat[0].size();
 
-void create_identity_matrix(matrix *P, int n){
-    create_matrix(P, n);
+    for(int i=0; i<n; i++){
+        for(int j=0; j<m; j++){
+            A.mat[i][j] = A.mat[i][j] - B.mat[i][j];
+        }
+    }   
+}
+
+void create_identity_matrix(matrix &P, int n){
+    create_matrix(P, n, n);
     for(int i=0; i < n; i++){
-        P->mat[i][i] = 1.0;
+        P.mat[i][i] = 1.0;
     }
 }
 
-void create_permutation_matrix(matrix *P, matrix *A){
-    int n = A->mat.size();
+void create_permutation_matrix(matrix &P, matrix &A){
+    int n = A.mat.size();
     create_identity_matrix(P, n);
 
     for(int k = 0; k < n; k++){
-        int max = 0;
+        double max = 0;
         int maxi = 0;
         for(int i = k; i < n; i++){
-            if(max < A->mat[i][k]){
-                max = A->mat[i][k];
+            if(max < A.mat[i][k]){
+                max = A.mat[i][k];
                 maxi = i;    
             }
         }    
@@ -76,17 +89,38 @@ void create_permutation_matrix(matrix *P, matrix *A){
         swap_matrix_rows(P, k, maxi);
     }
 }
+void copy_matrix(matrix &A, matrix &B, int ax, int ay, int bx, int by, int rows, int cols){
+    for(int i=0; i < rows; i++){
+        for(int j=0; j < cols; j++){
+            B.mat[bx+i][by+j] = A.mat[ax+i][ay+j];
+        }        
+    }
+}
+
+void divide_matrix(matrix &A, matrix &A00,  matrix &A01, matrix &A10, matrix &A11, int b){
+    int n = A.mat.size();
+
+    create_matrix(A00, b, b);
+    create_matrix(A01, b, n-b);
+    create_matrix(A10, n-b, b);
+    create_matrix(A11, n-b, n-b);
+    
+    copy_matrix(A, A00, 0, 0, 0, 0, b, b);
+    copy_matrix(A, A01, 0, b, 0, 0, b, n-b);
+    copy_matrix(A, A10, b, 0, 0, 0, n-b, b);
+    copy_matrix(A, A11, b, b, 0, 0, n-b, n-b);
+}
 
 
-bool is_singular_matrix(matrix *P){
-    int n = P->mat.size();
+bool is_singular_matrix(matrix &P){
+    int n = P.mat.size();
 
     for(int i = 0; i < n; i++){
         for(int j = 0; j < n; j++){
-            if(i==j and P->mat[i][j]==0){
+            if(i==j and P.mat[i][j]==0){
                 return false;
             }
-            if(i!=j and P->mat[i][j]!=0){
+            if(i!=j and P.mat[i][j]!=0){
                 return false;
             }
         }
@@ -94,43 +128,119 @@ bool is_singular_matrix(matrix *P){
     return true;
 }
 
-void lu_decomp(matrix *A, matrix *L, matrix *U, int n){
-    
-    //#pragma omp parallel default(none)
-    
-    for(int k = 0; k < n; k++){
-        
-        U->mat[k][k] = A->mat[k][k];
-        
+void findLU(matrix &A, matrix &L, matrix &U){
+    int n = A.mat.size();
+    for(int k = 0; k < n; k++){    
+        U.mat[k][k] = A.mat[k][k];
+
         /*  A = LU;
             Hence, A[i,j] = L[i,k]*U[k,j];
         */
         for(int i=0; i < k+1; i++){
             double s1 = 0;
             for(int j=0; j < i; j++){
-                s1 += L->mat[i][j] * U->mat[j][k];
+                s1 += L.mat[i][j] * U.mat[j][k];
             }
-            U->mat[i][k] = A->mat[i][k] - s1;
+            U.mat[i][k] = A.mat[i][k] - s1;
         }
         
         for(int i = k ; i < n; i++){
             double s2 = 0;
             for(int j=0; j < i; j++){
-                s2 += L->mat[i][j] * U->mat[j][k];
+                s2 += L.mat[i][j] * U.mat[j][k];
             }
-            L->mat[i][k] = (A->mat[i][k] - s2) / U->mat[k][k];
+            L.mat[i][k] = (A.mat[i][k] - s2) / U.mat[k][k];
         }
         
     }
-       
 }
+
+void findU(matrix &A, matrix &L, matrix &U){
+    int n = U.mat.size();
+    int m = U.mat[0].size();
+    
+    for(int i=0; i < n; i++){
+        for(int j=0; j < m; j++){
+            double s1 = 0;
+            for(int k=0; k < i; k++){
+                s1 += L.mat[i][k] * U.mat[k][j];    
+            }
+            U.mat[i][j] = (A.mat[i][j] - s1)/L.mat[i][i];    
+        }
+    }
+}
+
+void findL(matrix &A, matrix &L, matrix &U){
+    int n = L.mat.size();
+    int m = L.mat[0].size();
+    
+    for(int i=0; i < n; i++){
+        for(int j=0; j < m; j++){
+            double s1 = 0;
+            for(int k=0; k < j; k++){
+                s1 += L.mat[i][k] * U.mat[k][j];    
+            }
+            L.mat[i][j] = (A.mat[i][j] - s1)/U.mat[j][j];    
+        }
+    }
+}
+
+void combine(matrix &A, matrix &A00, matrix &A01, matrix &A10, matrix &A11, int b){
+    int n = A.mat.size();
+    copy_matrix(A00, A, 0, 0, 0, 0, b, b);
+    copy_matrix(A01, A, 0, 0, 0, b, b, n-b);
+    copy_matrix(A10, A, 0, 0, b, 0, n-b, b);
+    copy_matrix(A11, A, 0, 0, b, b, n-b, n-b);
+}
+
+void lu_decomp(matrix &A, matrix &L, matrix &U, int n){
+    
+    //#pragma omp parallel default(none)
+    if(n>2){
+        int b=2;
+        matrix A00, A01, A10, A11;
+        matrix L00, L01, L10, L11;
+        matrix U00, U01, U10, U11;
+        
+        divide_matrix(A, A00, A01, A10, A11, b);
+        divide_matrix(L, L00, L01, L10, L11, b);
+        divide_matrix(U, U00, U01, U10, U11, b);
+
+        
+
+        findLU(A00, L00, U00);
+        findU(A01, L00, U01);    
+        findL(A10, L10, U00);    
+        
+        matrix L10U01;
+        create_matrix_mult(L10, U01, L10U01); 
+        matrix_subtract(A11, L10U01);
+        
+        
+        matrix P11;
+        matrix P11A11;        
+        create_permutation_matrix(P11, A11);
+        create_matrix_mult(P11, A11, P11A11);
+
+        lu_decomp(P11A11, L11, U11, n-b);
+        
+        combine(L, L00, L01, L10, L11, b);
+        combine(U, U00, U01, U10, U11, b);
+
+    }
+    else{
+        findLU(A, L, U);
+    }
+    
+}
+
 void perform_decomposition(int n, int nworkers){
 
     omp_set_num_threads(nworkers);
 
     matrix A, P, PA, L, U;
 
-    create_matrix(&A, n);
+    create_matrix(A, n, n);
     // {{{7, 3, -1, 2}, {3, 8, 1, -4}, {-1, 1, 4, -1}, {2, -4, -1, 6}}};
 
     for(int i=0; i < n; i++){
@@ -139,27 +249,27 @@ void perform_decomposition(int n, int nworkers){
         }
     }
     
-    create_identity_matrix(&L, n);
-    create_matrix(&U, n);
-    create_permutation_matrix(&P, &A);
-    create_matrix_mult(&P, &A, &PA);
+    create_identity_matrix(L, n);
+    create_matrix(U, n, n);
+    create_permutation_matrix(P, A);
+    create_matrix_mult(P, A, PA);
 
     timer_start();
 
-    lu_decomp(&PA, &L, &U, n);
+    lu_decomp(PA, L, U, n);
 
     double execution_time = timer_elapsed();
 
     cout<<"Time taken: "<< execution_time << " with workers: "<<nworkers<<endl;
 
     cout<<"A"<<endl;
-    print_matrix(&A);
+    print_matrix(A);
     cout<<"PA"<<endl;
-    print_matrix(&PA);
+    print_matrix(PA);
     cout<<"L"<<endl;
-    print_matrix(&L);
+    print_matrix(L);
     cout<<"U"<<endl;
-    print_matrix(&U);
+    print_matrix(U);
 }
 
 void usage(const char *name){
