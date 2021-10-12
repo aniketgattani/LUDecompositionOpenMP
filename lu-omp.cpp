@@ -5,19 +5,12 @@
 #include <time.h>
 #include "timer.h" // to calculate time taken by program in UNIX
 #include <utility>
-#include <set>
-#include <map>
-#define F first
-#define S second
-#include <chrono>
-#include <thread>
 
 using namespace std;
 
 #define DEFAULT_VAL 0.0
 int BLOCK_SIZE = 2 ;
 
-map<pair<pair<int,int>,string>, pair<int, int>>mm;
 
 typedef struct { vector<vector<double>> mat; } matrix;
 
@@ -100,31 +93,16 @@ void create_permutation_matrix(matrix &P, matrix &A){
         swap_matrix_rows(P, k, maxi);
     }
 }
-void copy_matrix(matrix &A, matrix &B, int ax, int ay, int bx, int by, int rows, int cols, string &s, int xx=1){
+void copy_matrix(matrix &A, matrix &B, int ax, int ay, int bx, int by, int rows, int cols){
     for(int i=0; i < rows; i++){
         for(int j=0; j < cols; j++){
             #pragma omp atomic write
             B.mat[bx+i][by+j] = A.mat[ax+i][ay+j];
-
-            #pragma omp critical
-            {
-                if(xx==1 and mm.find({{bx+i, by+j},s})!=mm.end())
-                    cout<<ax+i<<' '<<ay+j<<' '<<bx+i<<' '<<by+j<<' '<<s<<' '<<mm[{{bx+i,by+j},s}].F<<' '<<mm[{{bx+i,by+j},s}].S<<endl;
-                
-                else if(xx==0 and mm.find({{ax+i, ay+j},s})!=mm.end())
-                    cout<<ax+i<<' '<<ay+j<<' '<<bx+i<<' '<<by+j<<' '<<s<<' '<<mm[{{ax+i,ay+j},s}].F<<' '<<mm[{{ax+i,ay+j},s}].S<<endl;
-            
-                if(xx==1){
-                    mm[{{bx+i,by+j},s}]={ax+i,ay+j}; 
-                } 
-                else mm[{{ax+i,ay+j},s}]={bx+i, by+j};
-                
-            }    
         }        
     }
 }
 
-void divide_matrix(matrix &A, matrix &A00,  matrix &A01, matrix &A10, matrix &A11, int b, string s){
+void divide_matrix(matrix &A, matrix &A00,  matrix &A01, matrix &A10, matrix &A11, int b){
     int n = A.mat.size();
 
     create_matrix(A00, b, b);
@@ -132,10 +110,10 @@ void divide_matrix(matrix &A, matrix &A00,  matrix &A01, matrix &A10, matrix &A1
     create_matrix(A10, n-b, b);
     create_matrix(A11, n-b, n-b);
     
-    copy_matrix(A, A00, 0, 0, 0, 0, b, b, s, 0);
-    copy_matrix(A, A01, 0, b, 0, 0, b, n-b, s, 0);
-    copy_matrix(A, A10, b, 0, 0, 0, n-b, b, s, 0);
-    copy_matrix(A, A11, b, b, 0, 0, n-b, n-b, s, 0);
+    copy_matrix(A, A00, 0, 0, 0, 0, b, b);
+    copy_matrix(A, A01, 0, b, 0, 0, b, n-b);
+    copy_matrix(A, A10, b, 0, 0, 0, n-b, b);
+    copy_matrix(A, A11, b, b, 0, 0, n-b, n-b);
 }
 
 
@@ -157,10 +135,6 @@ bool is_singular_matrix(matrix &P){
 
 void findLU(matrix &A, matrix &L, matrix &U){
     int n = A.mat.size();
-    #pragma omp critical
-    {
-        cout<<n<<' '<<endl;
-    }
     for(int k = 0; k < n; k++){    
         U.mat[k][k] = A.mat[k][k];
 
@@ -216,12 +190,12 @@ void findL(matrix &A, matrix &L, matrix &U){
     }
 }
 
-void combine(matrix &A, matrix &A00, matrix &A01, matrix &A10, matrix &A11, int b, string s){
+void combine(matrix &A, matrix &A00, matrix &A01, matrix &A10, matrix &A11, int b){
     int n = A.mat.size();
-    copy_matrix(A00, A, 0, 0, 0, 0, b, b, s);
-    copy_matrix(A01, A, 0, 0, 0, b, b, n-b, s);
-    copy_matrix(A10, A, 0, 0, b, 0, n-b, b, s);
-    copy_matrix(A11, A, 0, 0, b, b, n-b, n-b, s);
+    copy_matrix(A00, A, 0, 0, 0, 0, b, b);
+    copy_matrix(A01, A, 0, 0, 0, b, b, n-b);
+    copy_matrix(A10, A, 0, 0, b, 0, n-b, b);
+    copy_matrix(A11, A, 0, 0, b, b, n-b, n-b);
 }
 
 void lu_decomp(matrix &A, matrix &L, matrix &U, int n){
@@ -239,17 +213,17 @@ void lu_decomp(matrix &A, matrix &L, matrix &U, int n){
                 
                 // #pragma omp task shared(A00, A01, A10, A11, b)
                 {
-                    divide_matrix(A, A00, A01, A10, A11, b, "A"); 
+                    divide_matrix(A, A00, A01, A10, A11, b); 
                 }
 
                 // #pragma omp task shared(L00, L01, L10, L11, b)
                 {
-                    divide_matrix(L, L00, L01, L10, L11, b, "L");
+                    divide_matrix(L, L00, L01, L10, L11, b);
                 }
 
                 // #pragma omp task shared(U00, U01, U10, U11, b)
                 {
-                    divide_matrix(U, U00, U01, U10, U11, b, "U");
+                    divide_matrix(U, U00, U01, U10, U11, b);
                 }
 
                 // #pragma omp taskwait
@@ -284,12 +258,12 @@ void lu_decomp(matrix &A, matrix &L, matrix &U, int n){
             
                 #pragma omp task shared(L00, L01, L10, L11)
                 {
-                    combine(L, L00, L01, L10, L11, b, "LC");
+                    combine(L, L00, L01, L10, L11, b);
                 }
 
                 #pragma omp task shared(U00, U01, U10, U11)
                 {
-                    combine(U, U00, U01, U10, U11, b, "UC");
+                    combine(U, U00, U01, U10, U11, b);
                 }
 
                 #pragma omp taskwait
