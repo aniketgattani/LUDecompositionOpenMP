@@ -4,10 +4,13 @@
 #include <stdlib.h>
 #include <time.h>
 #include "timer.h" // to calculate time taken by program in UNIX
+#include <utility>
 
 using namespace std;
 
 #define DEFAULT_VAL 0.0
+int BLOCK_SIZE = 2 ;
+
 
 typedef struct { vector<vector<double>> mat; } matrix;
 
@@ -30,9 +33,10 @@ void print_matrix(matrix &A){
     cout<<"[";
     for(int i=0; i<n; i++){
         cout<<"[";
-        for(int j=0; j<n; j++){
+        for(int j=0; j<n-1; j++){
             cout<<A.mat[i][j]<<", "; 
         }       
+        cout<<A.mat[i][n-1];
         cout<<"],"<<endl;
     }   
     cout<<"]"<<endl;
@@ -92,6 +96,7 @@ void create_permutation_matrix(matrix &P, matrix &A){
 void copy_matrix(matrix &A, matrix &B, int ax, int ay, int bx, int by, int rows, int cols){
     for(int i=0; i < rows; i++){
         for(int j=0; j < cols; j++){
+            #pragma omp atomic write
             B.mat[bx+i][by+j] = A.mat[ax+i][ay+j];
         }        
     }
@@ -194,44 +199,81 @@ void combine(matrix &A, matrix &A00, matrix &A01, matrix &A10, matrix &A11, int 
 }
 
 void lu_decomp(matrix &A, matrix &L, matrix &U, int n){
-    
-    //#pragma omp parallel default(none)
-    if(n>2){
-        int b=2;
-        matrix A00, A01, A10, A11;
-        matrix L00, L01, L10, L11;
-        matrix U00, U01, U10, U11;
-        
-        divide_matrix(A, A00, A01, A10, A11, b);
-        divide_matrix(L, L00, L01, L10, L11, b);
-        divide_matrix(U, U00, U01, U10, U11, b);
+    int b = BLOCK_SIZE;
 
-        
+    #pragma omp parallel default(none) shared(A, L, U, n, b)
+    {            
+        #pragma omp single
+        {
+            if (n > b){
 
-        findLU(A00, L00, U00);
-        findU(A01, L00, U01);    
-        findL(A10, L10, U00);    
-        
-        matrix L10U01;
-        create_matrix_mult(L10, U01, L10U01); 
-        matrix_subtract(A11, L10U01);
-        
-        
-        matrix P11;
-        matrix P11A11;        
-        create_permutation_matrix(P11, A11);
-        create_matrix_mult(P11, A11, P11A11);
+                matrix A00, A01, A10, A11;
+                matrix L00, L01, L10, L11;
+                matrix U00, U01, U10, U11;
+                
+                // #pragma omp task shared(A00, A01, A10, A11, b)
+                {
+                    divide_matrix(A, A00, A01, A10, A11, b); 
+                }
 
-        lu_decomp(P11A11, L11, U11, n-b);
-        
-        combine(L, L00, L01, L10, L11, b);
-        combine(U, U00, U01, U10, U11, b);
+                // #pragma omp task shared(L00, L01, L10, L11, b)
+                {
+                    divide_matrix(L, L00, L01, L10, L11, b);
+                }
 
+                // #pragma omp task shared(U00, U01, U10, U11, b)
+                {
+                    divide_matrix(U, U00, U01, U10, U11, b);
+                }
+
+                // #pragma omp taskwait
+
+                findLU(A00, L00, U00);
+            
+                #pragma omp task shared(A01, L00, U01)
+                {
+                    findU(A01, L00, U01);    
+                }    
+
+                #pragma omp task shared(A10, L10, U00)
+                {
+                    findL(A10, L10, U00);    
+                }
+
+                #pragma omp taskwait
+                
+                matrix L10U01;
+                matrix P11;
+                matrix P11A11;        
+                
+                create_matrix_mult(L10, U01, L10U01); 
+                matrix_subtract(A11, L10U01);
+                
+                #pragma omp task shared(L11, U11, A11, b)
+                {
+                    lu_decomp(A11, L11, U11, n-b);
+                }
+
+                #pragma omp taskwait
+            
+                #pragma omp task shared(L00, L01, L10, L11)
+                {
+                    combine(L, L00, L01, L10, L11, b);
+                }
+
+                #pragma omp task shared(U00, U01, U10, U11)
+                {
+                    combine(U, U00, U01, U10, U11, b);
+                }
+
+                #pragma omp taskwait
+            }
+
+            else{
+                findLU(A, L, U);
+            }              
+        }
     }
-    else{
-        findLU(A, L, U);
-    }
-    
 }
 
 void perform_decomposition(int n, int nworkers){
@@ -288,6 +330,9 @@ int main(int argc, char **argv)
     int matrix_size = atoi(argv[1]);
 
     int nworkers = atoi(argv[2]);
+
+    if(argc == 4)
+    BLOCK_SIZE = atoi(argv[3]);
 
     std::cout << name << ": " 
         << matrix_size << " " << nworkers
