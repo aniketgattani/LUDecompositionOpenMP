@@ -67,11 +67,45 @@ void create_matrix_mult(matrix &A, matrix &B, matrix &C){
 void matrix_subtract(matrix &A, matrix &B){
     int n = A.mat.size();
     int m = A.mat[0].size();
+    int b = BLOCK_SIZE;
+	 
+    #pragma omp parallel default(none) shared(A, B, n, m, b) 
+    {
+        #pragma omp single 
+        {
+            for(int i=0; i < n/b; i++){
+                for(int j=0; j < m/b; j++){
+					   
+                   #pragma omp task firstprivate(i, j)
+                    {
+                        for(int ii = i * b; ii < (i+1) * b; ii++){
+                            for(int jj = j * b; jj < (j+1) * b; jj++){
+                                #pragma omp atomic write
+            			A.mat[ii][jj] = A.mat[ii][jj] - B.mat[ii][jj];
+                            }
+			}
+		    }
+		}
+	    }
+	    
+            for(int ii = b*(n/b) ; ii < n; ii++){
+                for(int jj = 0;  jj < m; jj++){
+                    #pragma omp atomic write
+            	    A.mat[ii][jj] = A.mat[ii][jj] - B.mat[ii][jj];
+                }
+            }
 
-    for(int i=0; i<n; i++){
-        for(int j=0; j<m; j++){
-            A.mat[i][j] = A.mat[i][j] - B.mat[i][j];
-        }
+            for(int jj = b*(m/b) ; jj < m; jj++){
+                for(int ii = 0;  ii < n; ii++){
+                    #pragma omp atomic write
+            	    A.mat[ii][jj] = A.mat[ii][jj] - B.mat[ii][jj];
+                }
+            }
+	    #pragma omp taskwait
+	}
+	
+
+            
     }   
 }
 
@@ -108,7 +142,7 @@ void copy_matrix(matrix &A, matrix &B, int ax, int ay, int bx, int by, int rows,
             for(int i=0; i < rows/b; i++){
                 for(int j=0; j < cols/b; j++){
                 
-                    #pragma omp task firstprivate(i, j)
+                   #pragma omp task firstprivate(i, j)
                     {
                         for(int ii = i * b; ii < (i+1) * b; ii++){
                             for(int jj = j * b; jj < (j+1) * b; jj++){
@@ -143,24 +177,27 @@ void copy_matrix(matrix &A, matrix &B, int ax, int ay, int bx, int by, int rows,
 void divide_matrix(matrix &A, matrix &A00,  matrix &A01, matrix &A10, matrix &A11, int b){
     int n = A.mat.size();
 
-    create_matrix(A00, b, b);
-    create_matrix(A01, b, n-b);
-    create_matrix(A10, n-b, b);
-    create_matrix(A11, n-b, n-b);
     
     #pragma omp parallel default(none) shared(A, A00, A01, A10, A11, b, n)
     {   
         
         #pragma omp single
         {
-            #pragma omp task
-            {
-                copy_matrix(A, A11, b, b, 0, 0, n-b, n-b);
-            }        
             
-            copy_matrix(A, A01, 0, b, 0, 0, b, n-b);
+    	    create_matrix(A00, b, b);
+    	    create_matrix(A01, b, n-b);
+    	    create_matrix(A10, n-b, b);
+            
+	    copy_matrix(A, A01, 0, b, 0, 0, b, n-b);
             copy_matrix(A, A10, b, 0, 0, 0, n-b, b);        
             copy_matrix(A, A00, 0, 0, 0, 0, b, b);
+	    
+	    #pragma omp task 
+            { 
+    	    	create_matrix(A11, n-b, n-b);
+		copy_matrix(A, A11, b, b, 0, 0, n-b, n-b);
+            }        
+ 
         
             #pragma omp taskwait    
         }
@@ -265,57 +302,59 @@ void lu_decomp(matrix &A, matrix &L, matrix &U, int n){
                 matrix L00, L01, L10, L11;
                 matrix U00, U01, U10, U11;
                 
-                #pragma omp task shared(A00, A01, A10, A11, b)
+                matrix L10U01; 
+       
+		//#pragma omp task shared(A00, A01, A10, A11, b) depend(inout: A00)
                 {
                     divide_matrix(A, A00, A01, A10, A11, b); 
                 }
 
-                #pragma omp task shared(L00, L01, L10, L11, b)
+                //#pragma omp task shared(L00, L01, L10, L11, b) depend(inout: L00)
                 {
                     divide_matrix(L, L00, L01, L10, L11, b);
                 }
 
-                #pragma omp task shared(U00, U01, U10, U11, b)
+                //#pragma omp task shared(U00, U01, U10, U11, b) depend(inout: U00)
                 {
                     divide_matrix(U, U00, U01, U10, U11, b);
                 }
+		
+		//#pragma omp taskwait
+		//#pragma omp flush(A00, L00, U00)
 
-                #pragma omp taskwait
-
-                findLU(A00, L00, U00);
-            
-                #pragma omp task shared(A01, L00, U01)
+		//#pragma omp task shared(A00, L00, U00) depend(in: A00) depend(inout: U00, L00)
+		{	
+               	   findLU(A00, L00, U00);
+		}
+		//#pragma omp flush(L00, U00)
+		
+                #pragma omp task shared(A01, L00, U01) depend(in: L00) depend(out: U01)
                 {
                     findU(A01, L00, U01);    
                 }    
 
-                #pragma omp task shared(A10, L10, U00)
+                #pragma omp task shared(A10, L10, U00) depend(in: U00) depend(out: L10)
                 {
                     findL(A10, L10, U00);    
                 }
+                
+                #pragma omp task shared(L10, U01, L10U01, A11) depend(in:L10, U01) depend(inout:A11) 
+		{
+               	    create_matrix_mult(L10, U01, L10U01); 
+               	    matrix_subtract(A11, L10U01);
+                }
 
-                #pragma omp taskwait
-                
-                matrix L10U01;
-                matrix P11;
-                matrix P11A11;        
-                
-                create_matrix_mult(L10, U01, L10U01); 
-                matrix_subtract(A11, L10U01);
-                
-                #pragma omp task shared(L11, U11, A11, b)
+                #pragma omp task shared(L11, U11, A11, b) depend(in:A11) depend(out: L11, U11)
                 {
                     lu_decomp(A11, L11, U11, n-b);
                 }
-
-                #pragma omp taskwait
             
-                #pragma omp task shared(L00, L01, L10, L11)
+                #pragma omp task shared(L00, L01, L10, L11) depend(in: L11)
                 {
                     combine(L, L00, L01, L10, L11, b);
                 }
 
-                #pragma omp task shared(U00, U01, U10, U11)
+                #pragma omp task shared(U00, U01, U10, U11) depend(in: U11)
                 {
                     combine(U, U00, U01, U10, U11, b);
                 }

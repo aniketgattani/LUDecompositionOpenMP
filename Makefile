@@ -2,8 +2,9 @@ NOWARN=-wd3180
 EXEC=lu-omp
 OBJ =  $(EXEC) $(EXEC)-debug $(EXEC)-serial
 
-MATRIX_SIZE=8000
+MATRIX_SIZE=1000
 MATRIX_CHECK_SIZE=100
+MATRIX_BLOCK_SIZE = 100
 W :=`grep processor /proc/cpuinfo | wc -l`
 
 CHECKER=inspxe-cl -collect=ti3 -r check
@@ -42,7 +43,7 @@ runs: $(EXEC)-serial
 #run the optimized program with thread checker
 check: $(EXEC)
 	@echo use make check W=nworkers
-	$(CHECKER) ./$(EXEC) $(MATRIX_SIZE) $(W)
+	$(CHECKER) ./$(EXEC) $(MATRIX_SIZE) $(W) $(MATRIX_BLOCK_SIZE)
 
 #view the thread checker result
 view:
