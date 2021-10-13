@@ -304,25 +304,29 @@ void lu_decomp(matrix &A, matrix &L, matrix &U, int n){
                 
                 matrix L10U01; 
        
-		#pragma omp task shared(A00, A01, A10, A11, b) depend(inout: A00)
+		//#pragma omp task shared(A00, A01, A10, A11, b) depend(inout: A00)
                 {
                     divide_matrix(A, A00, A01, A10, A11, b); 
                 }
 
-                #pragma omp task shared(L00, L01, L10, L11, b) depend(inout: L00)
+                //#pragma omp task shared(L00, L01, L10, L11, b) depend(inout: L00)
                 {
                     divide_matrix(L, L00, L01, L10, L11, b);
                 }
 
-                #pragma omp task shared(U00, U01, U10, U11, b) depend(inout: U00)
+                //#pragma omp task shared(U00, U01, U10, U11, b) depend(inout: U00)
                 {
                     divide_matrix(U, U00, U01, U10, U11, b);
                 }
+		
+		//#pragma omp taskwait
+		//#pragma omp flush(A00, L00, U00)
 
-		#pragma omp task shared(A00, L00, U00) depend(in: A00) depend(inout: U00, L00)
+		//#pragma omp task shared(A00, L00, U00) depend(in: A00) depend(inout: U00, L00)
 		{	
                	   findLU(A00, L00, U00);
 		}
+		//#pragma omp flush(L00, U00)
 		
                 #pragma omp task shared(A01, L00, U01) depend(in: L00) depend(out: U01)
                 {
