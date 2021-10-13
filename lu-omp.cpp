@@ -50,13 +50,18 @@ void create_matrix_mult(matrix &A, matrix &B, matrix &C){
     
     create_matrix(C, n, m);
 
-    for(int i=0; i<n; i++){
-        for(int j=0; j<m; j++){
-            for(int k=0; k<m1; k++){
-                C.mat[i][j] += A.mat[i][k] * B.mat[k][j];
+    #pragma omp parallel default(none) shared(A, B, C, n, m, m1)
+    {
+        #pragma omp for
+        for(int i=0; i<n; i++){
+            for(int j=0; j<m; j++){
+                for(int k=0; k<m1; k++){
+                    C.mat[i][j] += A.mat[i][k] * B.mat[k][j];
+                }
             }
-        }
+        }    
     }
+    
 }
 // A = A - B
 void matrix_subtract(matrix &A, matrix &B){
@@ -95,11 +100,43 @@ void create_permutation_matrix(matrix &P, matrix &A){
     }
 }
 void copy_matrix(matrix &A, matrix &B, int ax, int ay, int bx, int by, int rows, int cols){
-    for(int i=0; i < rows; i++){
-        for(int j=0; j < cols; j++){
-            #pragma omp atomic write
-            B.mat[bx+i][by+j] = A.mat[ax+i][ay+j];
-        }        
+    int b = BLOCK_SIZE;
+    #pragma omp parallel default(none) shared(A, B, ax, ay, bx, by, rows, cols, b) 
+    {
+        #pragma omp single 
+        {
+            for(int i=0; i < rows/b; i++){
+                for(int j=0; j < cols/b; j++){
+                
+                    #pragma omp task firstprivate(i, j)
+                    {
+                        for(int ii = i * b; ii < (i+1) * b; ii++){
+                            for(int jj = j * b; jj < (j+1) * b; jj++){
+                                #pragma omp atomic write
+                                B.mat[bx+ii][by+jj] = A.mat[ax+ii][ay+jj];
+                            }
+                        }        
+                    }
+                }
+            } 
+
+            for(int ii = b*(rows/b) ; ii < rows; ii++){
+                for(int jj = 0;  jj < cols; jj++){
+                    #pragma omp atomic write
+                    B.mat[bx+ii][by+jj] = A.mat[ax+ii][ay+jj];
+                }
+            }
+
+            for(int jj = b*(cols/b) ; jj < cols; jj++){
+                for(int ii = 0;  ii < rows; ii++){
+                    #pragma omp atomic write
+                    B.mat[bx+ii][by+jj] = A.mat[ax+ii][ay+jj];
+                }
+            }
+
+            #pragma omp taskwait
+
+        }   
     }
 }
 
@@ -111,10 +148,26 @@ void divide_matrix(matrix &A, matrix &A00,  matrix &A01, matrix &A10, matrix &A1
     create_matrix(A10, n-b, b);
     create_matrix(A11, n-b, n-b);
     
-    copy_matrix(A, A00, 0, 0, 0, 0, b, b);
-    copy_matrix(A, A01, 0, b, 0, 0, b, n-b);
-    copy_matrix(A, A10, b, 0, 0, 0, n-b, b);
-    copy_matrix(A, A11, b, b, 0, 0, n-b, n-b);
+    #pragma omp parallel default(none) shared(A, A00, A01, A10, A11, b, n)
+    {   
+        
+        #pragma omp single
+        {
+            #pragma omp task
+            {
+                copy_matrix(A, A11, b, b, 0, 0, n-b, n-b);
+            }        
+            
+            copy_matrix(A, A01, 0, b, 0, 0, b, n-b);
+            copy_matrix(A, A10, b, 0, 0, 0, n-b, b);        
+            copy_matrix(A, A00, 0, 0, 0, 0, b, b);
+        
+            #pragma omp taskwait    
+        }
+        
+        
+    }
+    
 }
 
 
@@ -283,21 +336,28 @@ void perform_decomposition(int n, int nworkers){
 
     matrix A, P, PA, L, U;
 
+    timer_start();
+
     create_matrix(A, n, n);
     // {{{7, 3, -1, 2}, {3, 8, 1, -4}, {-1, 1, 4, -1}, {2, -4, -1, 6}}};
 
-    for(int i=0; i < n; i++){
-        for(int j=0; j < n; j++){
-            A.mat[i][j] =  rand()%100 + 1;
+
+    #pragma omp parallel default(none) shared(n, A)
+    {
+        #pragma omp for
+        for(int i=0; i < n; i++){
+            srand(i);
+            for(int j=0; j < n; j++) A.mat[i][j] =  rand()%100 + 1;
         }
+        
     }
+
     
     create_identity_matrix(L, n);
     create_matrix(U, n, n);
     create_permutation_matrix(P, A);
     create_matrix_mult(P, A, PA);
 
-    timer_start();
 
     lu_decomp(PA, L, U, n);
 
