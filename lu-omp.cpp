@@ -9,6 +9,7 @@
 using namespace std;
 
 #define DEFAULT_VAL 0.0
+int VERBOSE = 0;
 int BLOCK_SIZE = 2 ;
 
 
@@ -302,16 +303,18 @@ void perform_decomposition(int n, int nworkers){
 
     double execution_time = timer_elapsed();
 
+    if(VERBOSE){	
+    	cout<<"A"<<endl;
+    	print_matrix(A);
+    	cout<<"PA"<<endl;
+    	print_matrix(PA);
+    	cout<<"L"<<endl;
+    	print_matrix(L);
+    	cout<<"U"<<endl;
+    	print_matrix(U);
+    }
     cout<<"Time taken: "<< execution_time << " with workers: "<<nworkers<<endl;
 
-    cout<<"A"<<endl;
-    print_matrix(A);
-    cout<<"PA"<<endl;
-    print_matrix(PA);
-    cout<<"L"<<endl;
-    print_matrix(L);
-    cout<<"U"<<endl;
-    print_matrix(U);
 }
 
 void usage(const char *name){
@@ -331,8 +334,11 @@ int main(int argc, char **argv)
 
     int nworkers = atoi(argv[2]);
 
-    if(argc == 4)
+    if(argc >= 4)
     BLOCK_SIZE = atoi(argv[3]);
+    
+    if(argc >= 5)
+    VERBOSE = atoi(argv[4]);
 
     std::cout << name << ": " 
         << matrix_size << " " << nworkers
