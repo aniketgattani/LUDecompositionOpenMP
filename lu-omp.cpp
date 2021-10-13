@@ -10,7 +10,7 @@ using namespace std;
 
 #define DEFAULT_VAL 0.0
 int VERBOSE = 0;
-int BLOCK_SIZE = 2 ;
+int BLOCK_SIZE = 100 ;
 
 
 typedef struct { vector<vector<double>> mat; } matrix;
@@ -265,22 +265,22 @@ void lu_decomp(matrix &A, matrix &L, matrix &U, int n){
                 matrix L00, L01, L10, L11;
                 matrix U00, U01, U10, U11;
                 
-                // #pragma omp task shared(A00, A01, A10, A11, b)
+                #pragma omp task shared(A00, A01, A10, A11, b)
                 {
                     divide_matrix(A, A00, A01, A10, A11, b); 
                 }
 
-                // #pragma omp task shared(L00, L01, L10, L11, b)
+                #pragma omp task shared(L00, L01, L10, L11, b)
                 {
                     divide_matrix(L, L00, L01, L10, L11, b);
                 }
 
-                // #pragma omp task shared(U00, U01, U10, U11, b)
+                #pragma omp task shared(U00, U01, U10, U11, b)
                 {
                     divide_matrix(U, U00, U01, U10, U11, b);
                 }
 
-                // #pragma omp taskwait
+                #pragma omp taskwait
 
                 findLU(A00, L00, U00);
             
