@@ -3,57 +3,59 @@
 #include <vector>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 #include "timer.h" // to calculate time taken by program in UNIX
 #include <utility>
 
 using namespace std;
 
 #define DEFAULT_VAL 0.0
+#define POS(X,Y,R) (X*R + Y)
+
 int VERBOSE = 0;
 int BLOCK_SIZE = 100 ;
 
 
-typedef struct { vector<vector<double>> mat; } matrix;
+typedef struct { vector<double> mat; int rows; int cols; } matrix;
 
 void create_matrix(matrix &A, int n, int m){
-    A.mat.resize(n);
-    for(int i=0; i<n; i++){
-        A.mat[i].resize(m, DEFAULT_VAL);
-    } 
+    A.rows = n;
+    A.cols = m;
+    A.mat.resize(n*m, DEFAULT_VAL);
 }
 
 void swap_matrix_rows(matrix &P, int x, int y){
-    int n = P.mat.size();
+    int n = P.rows;
     for(int i = 0; i < n; i++){
-        swap(P.mat[x][i], P.mat[y][i]);
+        swap(P.mat[POS(x, i, n)], P.mat[POS(y, i, n)]);
     }
 }
 
 void print_matrix(matrix &A){
-    int n = A.mat.size();
+    int n = A.rows;
     cout<<"[";
     for(int i=0; i<n; i++){
         cout<<"[";
         for(int j=0; j<n-1; j++){
-            cout<<A.mat[i][j]<<", "; 
+            cout<<A.mat[POS(i, j, n)]<<", "; 
         }       
-        cout<<A.mat[i][n-1];
+        cout<<A.mat[POS(i,n-1,n)];
         cout<<"],"<<endl;
     }   
     cout<<"]"<<endl;
 }
 
 void create_matrix_mult(matrix &A, matrix &B, matrix &C){
-    int n = A.mat.size();
-    int m = B.mat[0].size();
-    int m1 = A.mat[0].size();
+    int n = A.rows;
+    int m = B.cols;
+    int m1 = A.cols;
     
     create_matrix(C, n, m);
 
     for(int i=0; i<n; i++){
         for(int j=0; j<m; j++){
             for(int k=0; k<m1; k++){
-                C.mat[i][j] += A.mat[i][k] * B.mat[k][j];
+                C.mat[POS(i, j, n)] += A.mat[POS(i, k, n)] * B.mat[POS(k, j, m1)];
             }
         }
     }    
@@ -62,8 +64,8 @@ void create_matrix_mult(matrix &A, matrix &B, matrix &C){
 }
 // A = A - B
 void matrix_subtract(matrix &A, matrix &B){
-    int n = A.mat.size();
-    int m = A.mat[0].size();
+    int n = A.rows;
+    int m = A.cols;
     int b = BLOCK_SIZE;
 	// #pragma omp single
     {
@@ -71,7 +73,7 @@ void matrix_subtract(matrix &A, matrix &B){
             for(int j=0; j < m; j++){
                
                 // #pragma omp task firstprivate(i, j)
-                A.mat[i][j] = A.mat[i][j] - B.mat[i][j];
+                A.mat[POS(i, j, n)] = A.mat[POS(i,j,n)] - B.mat[POS(i,j,n)];
             }
         }
                     
@@ -83,20 +85,20 @@ void matrix_subtract(matrix &A, matrix &B){
 void create_identity_matrix(matrix &P, int n){
     create_matrix(P, n, n);
     for(int i=0; i < n; i++){
-        P.mat[i][i] = 1.0;
+        P.mat[POS(i,i,n)] = 1.0;
     }
 }
 
 void create_permutation_matrix(matrix &P, matrix &A){
-    int n = A.mat.size();
+    int n = A.rows;
     create_identity_matrix(P, n);
 
     for(int k = 0; k < n; k++){
         double max = 0;
         int maxi = 0;
         for(int i = k; i < n; i++){
-            if(max < A.mat[i][k]){
-                max = A.mat[i][k];
+            if(max < A.mat[POS(i,k,n)]){
+                max = A.mat[POS(i,k,n)];
                 maxi = i;    
             }
         }    
@@ -106,13 +108,15 @@ void create_permutation_matrix(matrix &P, matrix &A){
 }
 void copy_matrix(matrix &A, matrix &B, int ax, int ay, int bx, int by, int rows, int cols){
     int b = BLOCK_SIZE;
+    int na = A.rows;
+    int nb = B.rows;
     // #pragma omp single 
     {
         for(int i=0; i < rows; i++){
             for(int j=0; j < cols; j++){
             
                // #pragma omp task firstprivate(i, j)
-                B.mat[bx+i][by+j] = A.mat[ax+i][ay+j];
+                B.mat[POS(bx+i, by+j, nb)] = A.mat[POS(ax+i, ay+j, na)];
             }
         } 
 
@@ -122,7 +126,7 @@ void copy_matrix(matrix &A, matrix &B, int ax, int ay, int bx, int by, int rows,
 }
 
 void divide_matrix(matrix &A, matrix &A00,  matrix &A01, matrix &A10, matrix &A11, int b){
-    int n = A.mat.size();
+    int n = A.rows;
 
     // #pragma omp single
     {    
@@ -145,88 +149,9 @@ void divide_matrix(matrix &A, matrix &A00,  matrix &A01, matrix &A10, matrix &A1
         
 }
 
-bool is_singular_matrix(matrix &P){
-    int n = P.mat.size();
-
-    for(int i = 0; i < n; i++){
-        for(int j = 0; j < n; j++){
-            if(i==j and P.mat[i][j]==0){
-                return false;
-            }
-            if(i!=j and P.mat[i][j]!=0){
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-void findLU(matrix &A, matrix &L, matrix &U){
-    int n = A.mat.size();
-    for(int k = 0; k < n; k++){    
-        U.mat[k][k] = A.mat[k][k];
-
-        /*  A = LU;
-            Hence, A[i,j] = L[i,k]*U[k,j];
-        */
-        for(int i=0; i < k+1; i++){
-            double s1 = 0;
-            for(int j=0; j < i; j++){
-                s1 += L.mat[i][j] * U.mat[j][k];
-            }
-            U.mat[i][k] = A.mat[i][k] - s1;
-        }
-        
-        for(int i = k ; i < n; i++){
-            double s2 = 0;
-            for(int j=0; j < i; j++){
-                s2 += L.mat[i][j] * U.mat[j][k];
-            }
-            L.mat[i][k] = (A.mat[i][k] - s2) / U.mat[k][k];
-        }
-        
-    }
-}
-
-void findU(matrix &A, matrix &L, matrix &U){
-    int n = U.mat.size();
-    int m = U.mat[0].size();
-    
-    for(int i=0; i < n; i++){
-        for(int j=0; j < m; j++){
-            double s1 = 0;
-            for(int k=0; k < i; k++){
-                s1 += L.mat[i][k] * U.mat[k][j];    
-            }
-            U.mat[i][j] = (A.mat[i][j] - s1)/L.mat[i][i];    
-        }
-    }
-}
-
-void findL(matrix &A, matrix &L, matrix &U){
-    int n = L.mat.size();
-    int m = L.mat[0].size();
-    int b = BLOCK_SIZE;
-
-    // #pragma omp single
-    {
-        for(int i=0; i < n; i++){
-            for(int j=0; j < m; j++){   
-                double s1 = 0;
-                for(int k=0; k < j; k++){
-                    s1 += L.mat[i][k] * U.mat[k][j];    
-                }        
-                L.mat[i][j] = (A.mat[i][j] - s1)/U.mat[j][j];
-            }
-        }
-        
-        // #pragma omp taskwait
-    }    
-}
-
 
 void combine(matrix &A, matrix &A00, matrix &A01, matrix &A10, matrix &A11, int b){
-    int n = A.mat.size();
+    int n = A.cols;
     copy_matrix(A00, A, 0, 0, 0, 0, b, b);
     copy_matrix(A01, A, 0, 0, 0, b, b, n-b);
     copy_matrix(A10, A, 0, 0, b, 0, n-b, b);
@@ -234,77 +159,31 @@ void combine(matrix &A, matrix &A00, matrix &A01, matrix &A10, matrix &A11, int 
 }
 
 void lu_decomp(matrix &A, matrix &L, matrix &U, int n){
-    int b = BLOCK_SIZE;
-
-        if (n > b){
-
-            matrix A00, A01, A10, A11;
-            matrix L00, L01, L10, L11;
-            matrix U00, U01, U10, U11;
-            
-            matrix L10U01; 
-   
-	        #pragma omp task shared(A, A00, A01, A10, A11, b) depend(inout: A00)
-            {
-                divide_matrix(A, A00, A01, A10, A11, b); 
-            }
-
-            #pragma omp task shared(L, L00, L01, L10, L11, b) depend(inout: L00)
-            {
-                divide_matrix(L, L00, L01, L10, L11, b);
-            }
-
-            #pragma omp task shared(U, U00, U01, U10, U11, b) depend(inout: U00)
-            {
-                divide_matrix(U, U00, U01, U10, U11, b);
-            }
-	
-	        #pragma omp task shared(A00, L00, U00) depend(in: A00) depend(inout: U00, L00)
-
-	        {	
-           	   findLU(A00, L00, U00);
-            }
-	           
-            
-            #pragma omp task shared(A01, L00, U01) depend(in: L00) depend(out: U01)
-            {
-                findU(A01, L00, U01);
-                
-            }    
-            
-            #pragma omp task shared(A10, L10, U00) depend(in: U00) depend(out: L10)
-            {
-                findL(A10, L10, U00);    
-            }
-            
-            
-            #pragma omp task shared(L10, U01, L10U01, A11) depend(in:L10, U01) depend(inout:A11) 
-	        {
-           	    create_matrix_mult(L10, U01, L10U01); 
-           	    matrix_subtract(A11, L10U01);
-            }
-
-            #pragma omp task shared(L11, U11, A11, n, b) depend(in:A11) depend(out: L11, U11)
-            {
-                lu_decomp(A11, L11, U11, n-b);
-            }
-
-            #pragma omp task shared(L, L00, L01, L10, L11) depend(in: L11)
-            {
-                combine(L, L00, L01, L10, L11, b);
-            }
-
-            #pragma omp task shared(U, U00, U01, U10, U11) depend(in: U11)
-            {
-                combine(U, U00, U01, U10, U11, b);
-            }
-
-           #pragma omp taskwait
+    for(int i=0; i < n; i++){
+        for(int j=i+1 ; j < n; j++){
+            double fac =  U.mat[POS(j, i, n)]/U.mat[POS(i, i, n)];
+            for(int k = i; k < n; k++){
+                U.mat[POS(j, k, n)] -= U.mat[POS(i, k, n)] * fac;
+            }   
+            L.mat[POS(j, i, n)] =  fac;
         }
+    }          
+}
 
-        else{
-            findLU(A, L, U);
-        }              
+double check_diff(matrix &PA, matrix &L, matrix &U, int n){
+    matrix LU;
+    create_matrix_mult(L, U, LU);
+    double diff = 0;
+    for(int i=0;i<n;i++){
+        double s1 = 0;
+        for(int j=0; j<n; j++){
+            double x = PA.mat[POS(i, j, n)] - LU.mat[POS(i, j, n)];
+            s1 += x*x;
+        }    
+        s1 = sqrt(s1);
+        diff += s1;
+    }
+    return diff;
 }
 
 void perform_decomposition(int n, int nworkers){
@@ -324,29 +203,34 @@ void perform_decomposition(int n, int nworkers){
         #pragma omp single nowait
         {
             create_matrix(A, n, n);
-    
-            //#pragma omp for
+            create_matrix(U, n, n);
+            create_identity_matrix(L, n);
+            
+            // #pragma omp for
             for(int i=0; i < n; i++){
                 srand(i);
-                for(int j=0; j < n; j++) A.mat[i][j] =  rand()%100 + 1;
+                for(int j=0; j < n; j++) {
+                    A.mat[POS(i, j, n)] =  rand()%100 + 1;
+                    U.mat[POS(i, j, n)] = A.mat[POS(i, j, n)];
+                }
             }
 
-            create_identity_matrix(L, n);
-            create_matrix(U, n, n);
-            create_permutation_matrix(P, A);
-            create_matrix_mult(P, A, PA);
-
-            #pragma omp task shared(PA, L, U)
+            #pragma omp task shared(P, A, PA) depend(out: PA)
+            {
+                create_permutation_matrix(P, A);
+                create_matrix_mult(P, A, PA);
+            }
+            
+            #pragma omp task shared(PA, L, U) depend(in: PA)
             {
                 lu_decomp(PA, L, U, n);     
             }
-            
 
             #pragma omp taskwait
         }    
     }
 
-    
+
     if(VERBOSE){    
         cout<<"A"<<endl;
         print_matrix(A);
@@ -360,6 +244,7 @@ void perform_decomposition(int n, int nworkers){
 
     double execution_time = timer_elapsed();
 
+    cout<<"Diff :" << check_diff(PA, L, U, n)<<endl;
     cout<<"Time taken: "<< execution_time << " with workers: "<<nworkers<<endl;
 
 }
