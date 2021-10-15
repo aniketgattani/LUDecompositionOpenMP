@@ -159,7 +159,9 @@ void combine(matrix &A, matrix &A00, matrix &A01, matrix &A10, matrix &A11, int 
 }
 
 void lu_decomp(matrix &A, matrix &L, matrix &U, int n){
-    for(int i=0; i < n; i++){
+for(int i=0; i < n; i++){
+				
+	#pragma omp taskloop firstprivate(i) grainsize(100)
         for(int j=i+1 ; j < n; j++){
             double fac =  U.mat[POS(j, i, n)]/U.mat[POS(i, i, n)];
             for(int k = i; k < n; k++){
@@ -167,7 +169,8 @@ void lu_decomp(matrix &A, matrix &L, matrix &U, int n){
             }   
             L.mat[POS(j, i, n)] =  fac;
         }
-    }          
+
+    }                
 }
 
 double check_diff(matrix &PA, matrix &L, matrix &U, int n){
@@ -186,6 +189,7 @@ double check_diff(matrix &PA, matrix &L, matrix &U, int n){
     return diff;
 }
 
+
 void perform_decomposition(int n, int nworkers){
 
     omp_set_num_threads(nworkers);
@@ -197,7 +201,7 @@ void perform_decomposition(int n, int nworkers){
     timer_start();
 
 
-    #pragma omp parallel default(none) shared(n, A, L, U, P, PA, VERBOSE, nworkers)
+   #pragma omp parallel default(none) shared(n, A, L, U, P, PA, VERBOSE, nworkers) num_threads(nworkers) proc_bind(master)
     {
 
         #pragma omp single
@@ -214,23 +218,35 @@ void perform_decomposition(int n, int nworkers){
                 }
             }
 
-            #pragma omp task shared(P, A, PA) depend(out: PA)
+           // #pragma omp task shared(P, A, PA) depend(out: PA)
             {
                 create_permutation_matrix(P, A);
                 create_matrix_mult(P, A, PA);
             }
 
-            #pragma omp task shared(U, PA, n) depend(in: PA) depend(out: U)
+           // #pragma omp task shared(U, PA, n) depend(in: PA) depend(out: U)
             {
                 copy_matrix(PA, U, 0, 0, 0, 0, n, n);
             }
             
             
-            #pragma omp task shared(PA, L, U) depend(in: PA, U)
-            {
-                lu_decomp(PA, L, U, n);     
-            }
+	for(int i=0; i < n; i++){
+				
+	#pragma omp taskloop firstprivate(i) grainsize(100)
+        for(int j=i+1 ; j < n; j++){
+            double fac =  U.mat[POS(j, i, n)]/U.mat[POS(i, i, n)];
+            for(int k = i; k < n; k++){
+                U.mat[POS(j, k, n)] -= U.mat[POS(i, k, n)] * fac;
+            }   
+            L.mat[POS(j, i, n)] =  fac;
+        }
 
+    }                
+        //    #pragma omp task shared(PA, L, U) depend(in: PA, U)
+            {
+          //      lu_decomp(PA, L, U, n);     
+            }
+		printf("%d", omp_get_num_threads());
             #pragma omp taskwait
         }    
     }
