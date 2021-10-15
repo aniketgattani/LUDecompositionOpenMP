@@ -45,14 +45,10 @@ void l_u_d(float** a, float** l, float** u, int size)
             //for each row....
             //rows are split into seperate threads for processing
             #pragma omp for schedule(static)
-            for (int j = 0; j < size; j++)
+            for (int j = i; j < size; j++)
             {
                 //if j is smaller than i, set l[j][i] to 0
-                if (j < i)
-                {
-                    l[j][i] = 0;
-                    continue;
-                }
+      
                 //otherwise, do some math to get the right value
                 l[j][i] = a[j][i];
                 for (int k = 0; k < i; k++)
@@ -61,23 +57,12 @@ void l_u_d(float** a, float** l, float** u, int size)
                     l[j][i] = l[j][i] - l[j][k] * u[k][i];
                 }
             }
+	    u[i][i] = 1;
             //for each row...
             //rows are split into seperate threads for processing
             #pragma omp for schedule(static)
-            for (int j = 0; j < size; j++)
+            for (int j = i+1; j < size; j++)
             {
-                //if j is smaller than i, set u's current index to 0
-                if (j < i)
-                {
-                    u[i][j] = 0;
-                    continue;
-                }
-                //if they're equal, set u's current index to 1
-                if (j == i)
-                {
-                    u[i][j] = 1;
-                    continue;
-                }
                 //otherwise, do some math to get the right value
                 u[i][j] = a[i][j] / l[i][i];
                 for (int k = 0; k < i; k++)
@@ -143,7 +128,7 @@ int main(int argc, char** argv)
     double runtime;
     int numThreads;
     //set how many threads you want to use
-    omp_set_num_threads(40);
+    omp_set_num_threads(atoi(argv[2]));
     //seed rng
     srand(1);
 
@@ -159,15 +144,15 @@ int main(int argc, char** argv)
     random_fill(a, size);
     //print A
     cout << "A Matrix: " << endl;
-    print_matrix(a, size);
+    //print_matrix(a, size);
     //do LU decomposition
     runtime = omp_get_wtime();
     l_u_d(a, l, u, size);
     //print l and u
     cout << "L Matrix: " << endl;
-    print_matrix(l, size);
+    //print_matrix(l, size);
     cout << "U Matrix:" << endl;
-    print_matrix(u, size);
+    //print_matrix(u, size);
     //get the runtime of the job
     runtime = omp_get_wtime() - runtime;
     cout << "Runtime: " << runtime << endl;
