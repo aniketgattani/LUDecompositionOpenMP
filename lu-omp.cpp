@@ -208,10 +208,9 @@ void perform_decomposition(int n, int nworkers){
             
             // #pragma omp for
             for(int i=0; i < n; i++){
-                srand(i);
+                srand(i+1);
                 for(int j=0; j < n; j++) {
                     A.mat[POS(i, j, n)] =  rand()%100 + 1;
-                    U.mat[POS(i, j, n)] = A.mat[POS(i, j, n)];
                 }
             }
 
@@ -220,8 +219,14 @@ void perform_decomposition(int n, int nworkers){
                 create_permutation_matrix(P, A);
                 create_matrix_mult(P, A, PA);
             }
+
+            #pragma omp task shared(U, PA, n) depend(in: PA) depend(out: U)
+            {
+                copy_matrix(PA, U, 0, 0, 0, 0, n, n);
+            }
             
-            #pragma omp task shared(PA, L, U) depend(in: PA)
+            
+            #pragma omp task shared(PA, L, U) depend(in: PA, U)
             {
                 lu_decomp(PA, L, U, n);     
             }
