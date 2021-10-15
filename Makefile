@@ -3,7 +3,7 @@ EXEC=lu-omp
 OBJ =  $(EXEC) $(EXEC)-debug $(EXEC)-serial
 
 MATRIX_SIZE=1000
-MATRIX_CHECK_SIZE=100
+MATRIX_CHECK_SIZE=2000
 MATRIX_BLOCK_SIZE = 100
 W :=`grep processor /proc/cpuinfo | wc -l`
 
@@ -44,6 +44,15 @@ runs: $(EXEC)-serial
 check: $(EXEC)
 	@echo use make check W=nworkers
 	$(CHECKER) ./$(EXEC) $(MATRIX_SIZE) $(W) $(MATRIX_BLOCK_SIZE)
+
+#run the hpc checker
+runp-hpc: $(EXEC) 
+	@echo use make runp-hpc W=nworkers
+	@/bin/rm -rf $(EXEC).m $(EXEC).d
+	$(XX) hpcrun -e REALTIME@1000 -t -o $(EXEC).m ./$(EXEC)  $(MATRIX_CHECK_SIZE) $(W) 
+	hpcstruct $(EXEC)
+	hpcprof -S $(EXEC).hpcstruct -o $(EXEC).d $(EXEC).m
+	hpcviewer $(EXEC).d 
 
 #view the thread checker result
 view:

@@ -200,7 +200,7 @@ void perform_decomposition(int n, int nworkers){
     #pragma omp parallel default(none) shared(n, A, L, U, P, PA, VERBOSE, nworkers)
     {
 
-        #pragma omp single nowait
+        #pragma omp single
         {
             create_matrix(A, n, n);
             create_matrix(U, n, n);
