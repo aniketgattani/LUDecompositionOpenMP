@@ -5,6 +5,8 @@
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>  
+#include <math.h>
+
 using namespace std;
 
 void print_matrix(float**, int);
@@ -48,31 +50,49 @@ void l_u_d(float** a, float** l, float** u, int size)
             for (int j = i; j < size; j++)
             {
                 //if j is smaller than i, set l[j][i] to 0
-      
+                
                 //otherwise, do some math to get the right value
-                l[j][i] = a[j][i];
+                u[i][j] = a[i][j];
                 for (int k = 0; k < i; k++)
                 {
                     //deduct from the current l cell the value of these 2 values multiplied
-                    l[j][i] = l[j][i] - l[j][k] * u[k][i];
+                    u[i][j] -= l[i][k] * u[k][j];
                 }
             }
-	    u[i][i] = 1;
             //for each row...
             //rows are split into seperate threads for processing
+            l[i][i]=1;
             #pragma omp for schedule(static)
-            for (int j = i+1; j < size; j++)
+            for (int j = i; j < size; j++)
             {
+                //if j is smaller than i, set u's current index to 0
                 //otherwise, do some math to get the right value
-                u[i][j] = a[i][j] / l[i][i];
+                l[j][i] = a[j][i] / u[i][i];
                 for (int k = 0; k < i; k++)
                 {
-                    u[i][j] = u[i][j] - ((l[i][k] * u[k][j]) / l[i][i]);
+                    l[j][i] -= ((l[j][k] * u[k][i]) / u[i][i]);
                 }
             
             }
         }
     }
+}
+
+float check_diff(float **a, float **l, float **u, int n){
+    double diff = 0;
+    for(int i=0; i<n; i++){
+        double s1=0;
+        for(int j=0; j<n; j++){
+            double s2 = 0;
+            for(int k=0; k<n; k++){
+                s2 += l[i][k] * u[k][j]; 
+            } 
+            s2 = a[i][j]-s2;
+            s1 += s2*s2;
+        }
+        diff += sqrt(s1);
+    }
+    return diff;
 }
 
 //initialize the matrices
@@ -150,11 +170,12 @@ int main(int argc, char** argv)
     l_u_d(a, l, u, size);
     //print l and u
     cout << "L Matrix: " << endl;
-    //print_matrix(l, size);
+    print_matrix(l, size);
     cout << "U Matrix:" << endl;
-    //print_matrix(u, size);
+    print_matrix(u, size);
     //get the runtime of the job
     runtime = omp_get_wtime() - runtime;
+    cout<<check_diff(a, l, u, size)<<endl;
     cout << "Runtime: " << runtime << endl;
     return 0;
 }
