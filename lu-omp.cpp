@@ -33,10 +33,12 @@ void random_fill(double** matrix, int size)
 {
     //fill a with random values
     cout << "Producing random values " << endl;
-    cout << sizeof(matrix)/sizeof(matrix[0]) << endl;
-    for (int i = 0; i < size; i++)
+
+  //#pragma omp taskloop grainsize(10) 
+   for (int i = 0; i < size; i++)
     {
-        for (int j = 0; j < size; j++)
+       srand(i+1);
+       for (int j = 0; j < size; j++)
         {
             matrix[i][j] = ((rand()%10)+1) ;
         }
@@ -52,9 +54,9 @@ void random_fill(double** matrix, int size)
             }
         }    
         if(maxi!=i){
-            for(int j = 0; j < size; j++){
-                swap(matrix[i][j], matrix[maxi][j]);
-            }    
+            double *temp = matrix[i];
+	    matrix[i] = matrix[maxi];
+	    matrix[maxi] = temp;    
         }
         
     }
@@ -66,7 +68,7 @@ void initialize_matrices(double** a, double** l, double** u, int size)
 {
     //for each row in the 2d array, initialize the values
     //values are processed by seperate threads
-
+    //#pragma omp taskloop grainsize(10)	
     for (int i = 0; i < size; ++i)
     {
         a[i] = new double[size];
@@ -81,7 +83,7 @@ void initialize_matrices(double** a, double** l, double** u, int size)
 //do LU decomposition
 //a is the matrix that will be split up into l and u
 //array size for all is size x size
-void l_u_d(double** a, double** l, double** u, int size)
+void l_u_d(double** a, double** l, double** u, int size, int threads)
 {
     //initialize a simple lock for parallel region
     omp_lock_t lock;
@@ -89,7 +91,7 @@ void l_u_d(double** a, double** l, double** u, int size)
     omp_init_lock(&lock);
     //for each column...
     //make the for loops of lu decomposition parallel. Parallel region
-    #pragma omp parallel default(none) shared(a,l,u,size)
+    #pragma omp parallel default(none) shared(a,l,u,size,threads)
     {
         #pragma omp single
 	    {
@@ -100,8 +102,8 @@ void l_u_d(double** a, double** l, double** u, int size)
                 l[i][i]=1; 
         	   //for each row....
                     //rows are split into seperate threads for processing
-                    
-        	    #pragma omp taskloop
+      
+        	    #pragma omp taskloop 
                     for (int j = i; j < size; j++)
                     {
                         //if j is smaller than i, set l[j][i] to
@@ -176,7 +178,7 @@ int main(int argc, char** argv)
 
     
     runtime = omp_get_wtime();
-    l_u_d(a, l, u, size);
+    l_u_d(a, l, u, size, numThreads);
     runtime = omp_get_wtime() - runtime;
     
     //print A
@@ -191,7 +193,7 @@ int main(int argc, char** argv)
     }
 
     //get the runtime of the job
-    cout<<check_diff(a, l, u, size)<<endl;
+    //cout<<check_diff(a, l, u, size)<<endl;
     cout << "Runtime: " << runtime << endl;
     return 0;
 }
