@@ -9,191 +9,177 @@
 
 using namespace std;
 
-void print_matrix(double**, int);
+#define PRECISION 6
+typedef struct {double** mat; int rows; int cols;} matrix;
 
-//print the matrix out
-void print_matrix(double** matrix, int size)
-{
-    //for each row...
-    for (int i = 0; i < size; i++)
-    {
-        //for each column
-        for (int j = 0; j < size; j++)
-        {
-            //print out the cell
-            cout << left << setw(9) << setprecision(3) << matrix[i][j] << left <<  setw(9);
+
+void print_matrix(matrix &a){
+    int n = a.rows;
+    int m = a.cols;
+    cout<<"[";
+    for (int i = 0; i < n; i++){
+        cout<<"[ ";
+        for (int j = 0; j < m-1; j++){ 
+            cout << setprecision(PRECISION) << a.mat[i][j] << ' ';
         }
-        //new line when ever row is done
+        cout << setprecision(PRECISION) << a.mat[i][m-1] << " ]";
+        if(i!=n-1) cout << ", ";
         cout << endl;
     }
 }
 
-//fill the array with random values (done for a)
-void random_fill(double** matrix, int size)
-{
-    //fill a with random values
-    cout << "Producing random values " << endl;
+void fill_matrix(matrix &A){
 
+    int n = A.rows;
+    int m = A.cols;
+    
   //#pragma omp taskloop grainsize(10) 
-   for (int i = 0; i < size; i++)
-    {
+   for (int i = 0; i < n; i++){
        srand(i+1);
-       for (int j = 0; j < size; j++)
-        {
-            matrix[i][j] = ((rand()%10)+1) ;
+       for (int j = 0; j < m; j++){
+            A.mat[i][j] = ((rand()%100)+1) ;
         }
     }
 
-    for(int i = 0; i < size; i++){
+    for(int i = 0; i < n; i++){
         double max = 0;
         int maxi = 0;
-        for(int j = i; j < size; j++){
-            if(max < matrix[j][i]){
-                max = matrix[j][i];
+        for(int j = i; j < m; j++){
+            if(max < A.mat[j][i]){
+                max = A.mat[j][i];
                 maxi = j;    
             }
         }    
         if(maxi!=i){
-            double *temp = matrix[i];
-	    matrix[i] = matrix[maxi];
-	    matrix[maxi] = temp;    
+            double *temp = A.mat[i];
+	        A.mat[i] = A.mat[maxi];
+	        A.mat[maxi] = temp;    
         }
         
     }
 }
 
 
-//initialize the matrices
-void initialize_matrices(double** a, double** l, double** u, int size)
-{
-    //for each row in the 2d array, initialize the values
-    //values are processed by seperate threads
-    //#pragma omp taskloop grainsize(10)	
-    for (int i = 0; i < size; ++i)
+void initialise_matrices(matrix &a, matrix &l, matrix &u, int n){
+    a.rows = n;
+    a.cols = n;
+    a.mat = new double*[n];
+    
+    l.rows = n;
+    l.cols = n;
+    l.mat = new double*[n];
+
+    u.rows = n;
+    u.cols = n;
+    u.mat = new double*[n];
+
+    for (int i = 0; i < n; ++i)
     {
-        a[i] = new double[size];
-        l[i] = new double[size];
-        u[i] = new double[size];
+        a.mat[i] = new double[n];
+        l.mat[i] = new double[n];
+        u.mat[i] = new double[n];
     }
-
-    random_fill(a, size);
-
 }
 
-//do LU decomposition
-//a is the matrix that will be split up into l and u
-//array size for all is size x size
-void l_u_d(double** a, double** l, double** u, int size, int threads)
+void lu_decomp(matrix &a, matrix &l, matrix &u, int n)
 {
-    //initialize a simple lock for parallel region
-    omp_lock_t lock;
-
-    omp_init_lock(&lock);
-    //for each column...
-    //make the for loops of lu decomposition parallel. Parallel region
-    #pragma omp parallel default(none) shared(a,l,u,size,threads)
+    
+    #pragma omp parallel default(none) shared(a, l, u, n)
     {
         #pragma omp single
 	    {
 
-            initialize_matrices(a, l, u, size);
+            initialise_matrices(a, l, u, n);
+            fill_matrix(a);
             
-        	for (int i = 0; i < size; i++){
-                l[i][i]=1; 
-        	   //for each row....
-                    //rows are split into seperate threads for processing
-      
+        	for (int i = 0; i < n; i++){
+                l.mat[i][i]=1; 
+        	   
         	    #pragma omp taskloop 
-                    for (int j = i; j < size; j++)
-                    {
-                        //if j is smaller than i, set l[j][i] to
-                        //otherwise, do some math to get the right value
-                        u[i][j] = a[i][j];
-                        for (int k = 0; k < i; k++)
-                        {
-                            //deduct from the current l cell the value of these 2 values multiplied
-                            u[i][j] -= l[i][k] * u[k][j];
-                        }
+                for (int j = i; j < n; j++)
+                {
+                    
+                    u.mat[i][j] = a.mat[i][j];
+                    for (int k = 0; k < i; k++){
+                        u.mat[i][j] -= l.mat[i][k] * u.mat[k][j];
                     }
-        	 
-            //for each row...
-            //rows are split into seperate threads for processing
-  
-                #pragma omp taskloop
-                for (int j = i+1; j < size; j++){
-                    //if j is smaller than i, set u's current index to 0
-
-                    //otherwise, do some math to get the right value
-                    l[j][i] = a[j][i] / u[i][i];
-                    for (int k = 0; k < i; k++)
-                    {
-                        l[j][i] -= ((l[j][k] * u[k][i]) / u[i][i]);
-                    }
-                
                 }
+        	 
+            
+                #pragma omp taskloop
+                for (int j = i+1; j < n; j++){
+            
+                    l.mat[j][i] = a.mat[j][i] / u.mat[i][i];
+                    for (int k = 0; k < i; k++){
+                        l.mat[j][i] -= ((l.mat[j][k] * u.mat[k][i]) / u.mat[i][i]);
+                    }
+                }
+
             }
 	    }  
     }
+    
 }
 
-double check_diff(double **a, double **l, double **u, int n){
+double check_diff(matrix &a, matrix &l, matrix &u, int n){
     double diff = 0;
+
+    #pragma omp parallel for reduction(+: diff)
     for(int i=0; i<n; i++){
         double s1=0;
         for(int j=0; j<n; j++){
             double s2 = 0;
             for(int k=0; k<n; k++){
-                s2 += l[i][k] * u[k][j]; 
+                s2 += l.mat[i][k] * u.mat[k][j]; 
             } 
-            s2 = a[i][j]-s2;
+            s2 = a.mat[i][j]-s2;
             s1 += s2*s2;
         }
         diff += sqrt(s1);
     }
-    return diff;
+    return diff;        
 }
-
-
-
 
 
 int main(int argc, char** argv)
 {
-    double runtime;
-    int numThreads = atoi(argv[2]);
+    double time;
+    double diff;
+    int n;
+    int nworkers;
     int VERBOSE = 0;
+    
+    // parse the input
+    n = atoi(argv[1]);
+    nworkers = atoi(argv[2]);
     if(argc >= 4 ) VERBOSE = atoi(argv[3]);
     
-    //set how many threads you want to use
-    omp_set_num_threads(numThreads);
-    //seed rng
-
-    //size of matrix
-    int size = atoi(argv[1]);
-
-    //initalize matrices
-    double** a = new double* [size];
-    double** l = new double* [size];
-    double** u = new double* [size];
+    omp_set_num_threads(nworkers);
+     
+    matrix a;
+    matrix l;
+    matrix u;
 
     
-    runtime = omp_get_wtime();
-    l_u_d(a, l, u, size, numThreads);
-    runtime = omp_get_wtime() - runtime;
+    time = omp_get_wtime();
+    lu_decomp(a, l, u, n);
+    time = omp_get_wtime() - time;
+    cout << "Execution time for LU decomp: " << time << endl;
+
+    time = omp_get_wtime();
+    diff = check_diff(a,l,u,n);
+    time = omp_get_wtime() - time;
+    cout<<"Execution time with checking diff: " << time << endl;
     
-    //print A
     if(VERBOSE){
         cout << "A Matrix: " << endl;
-        print_matrix(a, size);    
-        //print l and u
+        print_matrix(a);    
         cout << "L Matrix: " << endl;
-        print_matrix(l, size);
+        print_matrix(l);
         cout << "U Matrix:" << endl;
-        print_matrix(u, size);
+        print_matrix(u);
     }
 
-    //get the runtime of the job
-    //cout<<check_diff(a, l, u, size)<<endl;
-    cout << "Runtime: " << runtime << " threads: " << numThreads << endl;
+    cout << "Total time: " << time << " threads: " << nworkers << " diff: " << diff << endl;
     return 0;
 }
