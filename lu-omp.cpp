@@ -194,6 +194,6 @@ int main(int argc, char** argv)
 
     //get the runtime of the job
     //cout<<check_diff(a, l, u, size)<<endl;
-    cout << "Runtime: " << runtime << endl;
+    cout << "Runtime: " << runtime << " threads: " << numThreads << endl;
     return 0;
 }
