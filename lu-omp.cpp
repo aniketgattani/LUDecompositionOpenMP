@@ -96,27 +96,31 @@ void lu_decomp(matrix &a, matrix &l, matrix &u, int n, int nworkers)
     u.rows = n;
     u.cols = n;
     u.mat = new double*[n];
-int sum=0;
-    #pragma omp parallel default(none) shared(a, l, u, n, sum)
+
+    #pragma omp parallel default(none) shared(a, l, u, n, nworkers)
     {
 
         #pragma omp for schedule(static)
-        for (int i = 0; i < n; ++i){
-            a.mat[i] = new double[n];
-            l.mat[i] = new double[n];
-            u.mat[i] = new double[n];
+        for (int ii = 0; ii < nworkers; ++ii){
+            for(int i = ii; i < n; i += nworkers){
+                a.mat[i] = new double[n];
+                l.mat[i] = new double[n];
+                u.mat[i] = new double[n];  
+            }            
         }
 
+
         #pragma omp for schedule(static) 
-        for (int i = 0; i < n; i++){
-            srand(i+1);
-	    l.mat[i][i]=1;
-            for (int j = 0; j < n; j++){
-                a.mat[i][j] = ((rand()%100)+1) ;
-                //u.mat[i][j] = a.mat[i][j];
-            }
-        }  
-}  
+        for (int ii = 0; ii < nworkers; ++ii){
+            for(int i = ii; i < n; i += nworkers){
+                srand(i+1);
+                l.mat[i][i]=1;
+                for (int j = 0; j < n; j++){
+                    a.mat[i][j] = ((rand()%100)+1);
+                }
+            } 
+        }   
+    }  
         
     for(int i = 0; i < n; i++){
         double max = 0;
@@ -126,35 +130,40 @@ int sum=0;
                 max = a.mat[j][i];
                 maxi = j;    
             }
-        }    
+        }
+
         if(maxi!=i){
             double *temp = a.mat[i];
 	        a.mat[i] = a.mat[maxi];
 	        a.mat[maxi] = temp;    
         }
-}
+    }
         
-        for (int i = 0; i < n; i++){
-    	    #pragma omp parallel for default(none) shared(a,l,u,n,i) schedule(static) 
-            for (int j = i; j < n; j++){
+    for (int i = 0; i < n; i++){
+	    #pragma omp parallel for default(none) shared(a,l,u,n,i,nworkers) schedule(static) 
+        for (int jj = 0; jj < min(n-i, nworkers); jj++){
+            int st = (i/nworkers)*nworkers + jj;
+            for(int j = st ; j < n; j+=nworkers){
                 double t = a.mat[i][j];
-    	        for (int k = 0; k < i; k++){
+                for (int k = 0; k < i; k++){
                     t -= l.mat[i][k] * u.mat[k][j];
                 }
-		        u.mat[i][j] = t;
-		    
-           }        	 
+                u.mat[i][j] = t;
+            }
+        }        	 
             
-            #pragma omp parallel for default(none) shared(a,l,u,n,i) schedule(static)
-            for (int j = i+1; j < n; j++){
-        
+        #pragma omp parallel for default(none) shared(a,l,u,n,i,nworkers) schedule(static)
+        for (int jj = 0; jj < min(n-i, nworkers); jj++){
+            int st = (i+1/nworkers)*nworkers + jj;
+            for(int j = st ; j < n; j+=nworkers){
                 double t = a.mat[j][i] / u.mat[i][i];
                 for (int k = 0; k < i; k++){
                     t -= ((l.mat[j][k] * u.mat[k][i]) / u.mat[i][i]);
                 }
                 l.mat[j][i] = t;
             }
-        }    
+        }
+    }
 }
 
 double check_diff(matrix &a, matrix &l, matrix &u, int n, int nworkers){
