@@ -96,8 +96,8 @@ void lu_decomp(matrix &a, matrix &l, matrix &u, int n, int nworkers)
     u.rows = n;
     u.cols = n;
     u.mat = new double*[n];
-
-    #pragma omp parallel default(none) shared(a, l, u, n)
+int sum=0;
+    #pragma omp parallel default(none) shared(a, l, u, n, sum)
     {
 
         #pragma omp for schedule(static)
@@ -110,16 +110,32 @@ void lu_decomp(matrix &a, matrix &l, matrix &u, int n, int nworkers)
         #pragma omp for schedule(static) 
         for (int i = 0; i < n; i++){
             srand(i+1);
+	    l.mat[i][i]=1;
             for (int j = 0; j < n; j++){
                 a.mat[i][j] = ((rand()%100)+1) ;
-                u.mat[i][j] = a.mat[i][j];
+                //u.mat[i][j] = a.mat[i][j];
+            }
+        }  
+}  
+        
+    for(int i = 0; i < n; i++){
+        double max = 0;
+        int maxi = 0;
+        for(int j = i; j < n; j++){
+            if(max < a.mat[j][i]){
+                max = a.mat[j][i];
+                maxi = j;    
             }
         }    
+        if(maxi!=i){
+            double *temp = a.mat[i];
+	        a.mat[i] = a.mat[maxi];
+	        a.mat[maxi] = temp;    
+        }
+}
         
         for (int i = 0; i < n; i++){
-            l.mat[i][i]=1; 
-    	   
-    	    #pragma omp for schedule(static) 
+    	    #pragma omp parallel for default(none) shared(a,l,u,n,i) schedule(static) 
             for (int j = i; j < n; j++){
                 double t = a.mat[i][j];
     	        for (int k = 0; k < i; k++){
@@ -127,10 +143,9 @@ void lu_decomp(matrix &a, matrix &l, matrix &u, int n, int nworkers)
                 }
 		        u.mat[i][j] = t;
 		    
-            }
-        	 
+           }        	 
             
-            #pragma omp for schedule(static)
+            #pragma omp parallel for default(none) shared(a,l,u,n,i) schedule(static)
             for (int j = i+1; j < n; j++){
         
                 double t = a.mat[j][i] / u.mat[i][i];
@@ -140,7 +155,6 @@ void lu_decomp(matrix &a, matrix &l, matrix &u, int n, int nworkers)
                 l.mat[j][i] = t;
             }
         }    
-    }
 }
 
 double check_diff(matrix &a, matrix &l, matrix &u, int n, int nworkers){
@@ -198,7 +212,7 @@ int main(int argc, char** argv)
     execution_time = omp_get_wtime() - time;
     cout << "Execution time for LU decomp: " << execution_time << endl;
 
-    // diff = check_diff(a,l,u,n,nworkers);
+    //diff = check_diff(a,l,u,n,nworkers);
     execution_time = omp_get_wtime() - time;
     cout<<"Execution time with checking diff: " << execution_time << endl;
     
