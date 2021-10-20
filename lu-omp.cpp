@@ -84,56 +84,44 @@ void initialise_matrices(matrix &a, matrix &l, matrix &u, int n){
 void lu_decomp(matrix &a, matrix &l, matrix &u, int n, int nworkers)
 {   
     omp_set_num_threads(nworkers);
-
-    a.rows = n;
-    a.cols = n;
-    a.mat = new double*[n];
-    
-    l.rows = n;
-    l.cols = n;
-    l.mat = new double*[n];
-
-    u.rows = n;
-    u.cols = n;
-    u.mat = new double*[n];
-
-    
-
     #pragma omp parallel default(none) shared(a, l, u, n)
     {
-        #pragma omp for schedule(static)
-        for (int i = 0; i < n; ++i){
-            a.mat[i] = new double[n];
-            l.mat[i] = new double[n];
-            u.mat[i] = new double[n];
-        }
+        #pragma omp single
+	    {
 
-        #pragma omp for schedule(static) 
-        for (int i = 0; i < n; i++){
-           srand(i+1);
-           for (int j = 0; j < n; j++){
-                a.mat[i][j] = ((rand()%100)+1) ;
-                u.mat[i][j] = a.mat[i][j];
-            }
-        }
-
-
-        for(int k = 0; k < n; k++){
-            int row;
-            #pragma omp for schedule(static)
-            for(row = k + 1; row < n; row++){
-                int col;
-
-                double factor = u.mat[row][k]/u.mat[k][k];
-                printf("%f \n", factor);
-                for(col = k + 1; col < n; col++){
-                    u.mat[row][col] = u.mat[row][col] - factor*u.mat[k][col];
+            initialise_matrices(a, l, u, n);
+            fill_matrix(a);
+            
+        	for (int i = 0; i < n; i++){
+                l.mat[i][i]=1; 
+        	   
+        	    #pragma omp taskloop 
+                for (int j = i; j < n; j++)
+                {
+                    //for(int j=jj; j < n and j < jj+8; j++){
+                    double t = a.mat[i][j];
+	    	    //u.mat[i][j] = a.mat[i][j];
+                    for (int k = 0; k < i; k++){
+                        t -= l.mat[i][k] * u.mat[k][j];
+                    }
+		    u.mat[i][j] = t;
+		    
+                }
+        	 
+            
+                #pragma omp taskloop
+                for (int j = i+1; j < n; j++){
+            
+                    l.mat[j][i] = a.mat[j][i] / u.mat[i][i];
+                    for (int k = 0; k < i; k++){
+                        l.mat[j][i] -= ((l.mat[j][k] * u.mat[k][i]) / u.mat[i][i]);
+                    }
                 }
 
-                l.mat[row][k] = factor;
             }
-        }	 
+	    }  
     }
+    
 }
 
 double check_diff(matrix &a, matrix &l, matrix &u, int n, int nworkers){
@@ -191,7 +179,7 @@ int main(int argc, char** argv)
     execution_time = omp_get_wtime() - time;
     cout << "Execution time for LU decomp: " << execution_time << endl;
 
-    diff = check_diff(a,l,u,n,nworkers);
+   // diff = check_diff(a,l,u,n,nworkers);
     execution_time = omp_get_wtime() - time;
     cout<<"Execution time with checking diff: " << execution_time << endl;
     
