@@ -81,9 +81,9 @@ void initialise_matrices(matrix &a, matrix &l, matrix &u, int n){
     }
 }
 
-void lu_decomp(matrix &a, matrix &l, matrix &u, int n)
-{
-    
+void lu_decomp(matrix &a, matrix &l, matrix &u, int n, int nworkers)
+{   
+    omp_set_num_threads(nworkers);
     #pragma omp parallel default(none) shared(a, l, u, n)
     {
         #pragma omp single
@@ -98,11 +98,14 @@ void lu_decomp(matrix &a, matrix &l, matrix &u, int n)
         	    #pragma omp taskloop 
                 for (int j = i; j < n; j++)
                 {
-                    
-                    u.mat[i][j] = a.mat[i][j];
+                    //for(int j=jj; j < n and j < jj+8; j++){
+                    double t = a.mat[i][j];
+	    	    //u.mat[i][j] = a.mat[i][j];
                     for (int k = 0; k < i; k++){
-                        u.mat[i][j] -= l.mat[i][k] * u.mat[k][j];
+                        t -= l.mat[i][k] * u.mat[k][j];
                     }
+		    u.mat[i][j] = t;
+		    
                 }
         	 
             
@@ -121,22 +124,32 @@ void lu_decomp(matrix &a, matrix &l, matrix &u, int n)
     
 }
 
-double check_diff(matrix &a, matrix &l, matrix &u, int n){
+double check_diff(matrix &a, matrix &l, matrix &u, int n, int nworkers){
     double diff = 0;
-
+    omp_set_num_threads(nworkers);
+    omp_set_nested(1);
+ int b = 5;
     #pragma omp parallel for reduction(+: diff)
-    for(int i=0; i<n; i++){
-        double s1=0;
-        for(int j=0; j<n; j++){
-            double s2 = 0;
-            for(int k=0; k<n; k++){
-                s2 += l.mat[i][k] * u.mat[k][j]; 
-            } 
-            s2 = a.mat[i][j]-s2;
-            s1 += s2*s2;
-        }
-        diff += sqrt(s1);
-    }
+    //{
+
+        //{
+            //#pragma omp taskloop reduction(+: diff)
+            for(int ii=0; ii<n/b; ii++){
+            for(int i = ii*b; i < (ii+1)*b; i++){ 
+                double s1=0;
+                //#pragma omp parallel for reduction(+: s1)
+	        for(int j=0; j<n; j++){
+                    double s2 = 0;
+                    for(int k=0; k<n; k++){
+                        s2 += l.mat[i][k] * u.mat[k][j]; 
+                    } 
+                    s2 = a.mat[i][j]-s2;
+                    s1 += s2*s2;
+                }
+                diff += sqrt(s1);
+            }}
+      // }
+   //}
     return diff;        
 }
 
@@ -144,6 +157,7 @@ double check_diff(matrix &a, matrix &l, matrix &u, int n){
 int main(int argc, char** argv)
 {
     double time;
+    double execution_time;
     double diff;
     int n;
     int nworkers;
@@ -154,7 +168,6 @@ int main(int argc, char** argv)
     nworkers = atoi(argv[2]);
     if(argc >= 4 ) VERBOSE = atoi(argv[3]);
     
-    omp_set_num_threads(nworkers);
      
     matrix a;
     matrix l;
@@ -162,14 +175,13 @@ int main(int argc, char** argv)
 
     
     time = omp_get_wtime();
-    lu_decomp(a, l, u, n);
-    time = omp_get_wtime() - time;
-    cout << "Execution time for LU decomp: " << time << endl;
+    lu_decomp(a, l, u, n, nworkers);
+    execution_time = omp_get_wtime() - time;
+    cout << "Execution time for LU decomp: " << execution_time << endl;
 
-    time = omp_get_wtime();
-    diff = check_diff(a,l,u,n);
-    time = omp_get_wtime() - time;
-    cout<<"Execution time with checking diff: " << time << endl;
+   // diff = check_diff(a,l,u,n,nworkers);
+    execution_time = omp_get_wtime() - time;
+    cout<<"Execution time with checking diff: " << execution_time << endl;
     
     if(VERBOSE){
         cout << "A Matrix: " << endl;
@@ -180,6 +192,6 @@ int main(int argc, char** argv)
         print_matrix(u);
     }
 
-    cout << "Total time: " << time << " threads: " << nworkers << " diff: " << diff << endl;
+    cout << "Total time: " << execution_time << " threads: " << nworkers << " diff: " << diff << endl;
     return 0;
 }

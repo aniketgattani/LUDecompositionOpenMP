@@ -43,7 +43,7 @@ runs: $(EXEC)-serial
 #run the optimized program with thread checker
 check: $(EXEC)
 	@echo use make check W=nworkers
-	$(CHECKER) ./$(EXEC) $(MATRIX_SIZE) $(W) $(MATRIX_BLOCK_SIZE)
+	$(CHECKER) ./$(EXEC) $(MATRIX_SIZE) $(W)
 
 #run the hpc checker
 runp-hpc: $(EXEC) 
