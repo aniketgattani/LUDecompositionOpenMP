@@ -97,47 +97,57 @@ void lu_decomp(matrix &a, matrix &l, matrix &u, int n, int nworkers)
     u.cols = n;
     u.mat = new double*[n];
 
-    #pragma omp parallel default(none) shared(a, l, u, n)
+    #pragma omp parallel default(none) shared(a, l, u, n, nworkers)
     {
 
         #pragma omp for schedule(static)
-        for (int i = 0; i < n; ++i){
-            a.mat[i] = new double[n];
-            l.mat[i] = new double[n];
-            u.mat[i] = new double[n];
+        for (int ii = 0; ii < nworkers; ++ii){
+            for(int i = ii; i < n; i += nworkers){
+                a.mat[i] = new double[n];
+                l.mat[i] = new double[n];
+                u.mat[i] = new double[n];  
+            }            
         }
 
+
         #pragma omp for schedule(static) 
-        for (int i = 0; i < n; i++){
-            srand(i+1);
-            for (int j = 0; j < n; j++){
-                a.mat[i][j] = ((rand()%100)+1) ;
-                u.mat[i][j] = a.mat[i][j];
-            }
+        for (int ii = 0; ii < nworkers; ++ii){
+            for(int i = ii; i < n; i += nworkers){
+                srand(i+1);
+                for (int j = 0; j < n; j++){
+                    a.mat[i][j] = ((rand()%100)+1) ;
+                    u.mat[i][j] = a.mat[i][j];
+                }
+            }  
         }    
         
         for (int i = 0; i < n; i++){
             l.mat[i][i]=1; 
     	   
     	    #pragma omp for schedule(static) 
-            for (int j = i; j < n; j++){
-                double t = a.mat[i][j];
-    	        for (int k = 0; k < i; k++){
-                    t -= l.mat[i][k] * u.mat[k][j];
+            for (int jj = 0; jj < min(n-i, nworkers); jj++){
+                int st = (i+1/nworkers)*nworkers + jj;
+                for(int j = st ; j < n; j+=nworkers){
+                    double t = a.mat[i][j];
+        	        for (int k = 0; k < i; k++){
+                        t -= l.mat[i][k] * u.mat[k][j];
+                    }
+    		        u.mat[i][j] = t;
+    		    
                 }
-		        u.mat[i][j] = t;
-		    
             }
-        	 
-            
+            	 
+                
             #pragma omp for schedule(static)
-            for (int j = i+1; j < n; j++){
-        
-                double t = a.mat[j][i] / u.mat[i][i];
-                for (int k = 0; k < i; k++){
-                    t -= ((l.mat[j][k] * u.mat[k][i]) / u.mat[i][i]);
+            for (int jj = 0; jj < min(n-i, nworkers); jj++){
+                int st = (i+1/nworkers)*nworkers + jj;
+                for(int j = st ; j < n; j+=nworkers){
+                    double t = a.mat[j][i] / u.mat[i][i];
+                    for (int k = 0; k < i; k++){
+                        t -= ((l.mat[j][k] * u.mat[k][i]) / u.mat[i][i]);
+                    }
+                    l.mat[j][i] = t;
                 }
-                l.mat[j][i] = t;
             }
         }    
     }
@@ -198,7 +208,7 @@ int main(int argc, char** argv)
     execution_time = omp_get_wtime() - time;
     cout << "Execution time for LU decomp: " << execution_time << endl;
 
-    // diff = check_diff(a,l,u,n,nworkers);
+    //diff = check_diff(a,l,u,n,nworkers);
     execution_time = omp_get_wtime() - time;
     cout<<"Execution time with checking diff: " << execution_time << endl;
     
