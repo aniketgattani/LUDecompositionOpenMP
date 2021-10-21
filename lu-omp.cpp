@@ -20,9 +20,24 @@ void print_matrix(matrix &a){
     for (int i = 0; i < n; i++){
         cout<<"[ ";
         for (int j = 0; j < m-1; j++){ 
-            cout << setprecision(PRECISION) << a.mat[i][j] << ' ';
+            cout << setprecision(PRECISION) << a.mat[i][j] << " ,";
         }
         cout << setprecision(PRECISION) << a.mat[i][m-1] << " ]";
+        if(i!=n-1) cout << ", ";
+        cout << endl;
+    }
+}
+
+void print_transpose_matrix(matrix &a){
+    int n = a.rows;
+    int m = a.cols;
+    cout<<"[";
+    for (int i = 0; i < n; i++){
+        cout<<"[ ";
+        for (int j = 0; j < m-1; j++){ 
+            cout << setprecision(PRECISION) << a.mat[j][i] << " ,";
+        }
+        cout << setprecision(PRECISION) << a.mat[m-1][i] << " ]";
         if(i!=n-1) cout << ", ";
         cout << endl;
     }
@@ -142,23 +157,27 @@ void lu_decomp(matrix &a, matrix &l, matrix &u, int n, int nworkers)
     for (int i = 0; i < n; i++){
 	    #pragma omp parallel for default(none) shared(a,l,u,n,i,nworkers) schedule(static) 
         for (int jj = 0; jj < min(n-i, nworkers); jj++){
-            int st = (i/nworkers)*nworkers + jj;
-            for(int j = st ; j < n; j+=nworkers){
+            int nn = min(n-i, nworkers);
+            int st = (i/nn)*nn + jj;
+            if(st < i) st+=nn;
+            for(int j = st ; j < n; j+=nn){
                 double t = a.mat[i][j];
                 for (int k = 0; k < i; k++){
-                    t -= l.mat[i][k] * u.mat[k][j];
+                    t -= l.mat[i][k] * u.mat[j][k];
                 }
-                u.mat[i][j] = t;
+                u.mat[j][i] = t;
             }
         }        	 
             
         #pragma omp parallel for default(none) shared(a,l,u,n,i,nworkers) schedule(static)
         for (int jj = 0; jj < min(n-i, nworkers); jj++){
-            int st = (i+1/nworkers)*nworkers + jj;
-            for(int j = st ; j < n; j+=nworkers){
+            int nn = min(n-i, nworkers);
+            int st = ((i+1)/nn)*nn + jj;
+            if(st < i+1) st+=nn;
+            for(int j = st ; j < n; j+=nn){
                 double t = a.mat[j][i] / u.mat[i][i];
                 for (int k = 0; k < i; k++){
-                    t -= ((l.mat[j][k] * u.mat[k][i]) / u.mat[i][i]);
+                    t -= ((l.mat[j][k] * u.mat[i][k]) / u.mat[i][i]);
                 }
                 l.mat[j][i] = t;
             }
@@ -171,25 +190,23 @@ double check_diff(matrix &a, matrix &l, matrix &u, int n, int nworkers){
     omp_set_num_threads(nworkers);
     omp_set_nested(1);
  int b = 5;
-    #pragma omp parallel for reduction(+: diff)
     //{
 
         //{
             //#pragma omp taskloop reduction(+: diff)
-            for(int ii=0; ii<n/b; ii++){
-            for(int i = ii*b; i < (ii+1)*b; i++){ 
-                double s1=0;
+        for(int i = 0; i < n; i++){ 
+            double s1=0;
                 //#pragma omp parallel for reduction(+: s1)
 	        for(int j=0; j<n; j++){
-                    double s2 = 0;
-                    for(int k=0; k<n; k++){
-                        s2 += l.mat[i][k] * u.mat[k][j]; 
-                    } 
-                    s2 = a.mat[i][j]-s2;
-                    s1 += s2*s2;
-                }
+                double s2 = 0;
+                for(int k=0; k<n; k++){
+                    s2 += l.mat[i][k] * u.mat[j][k]; 
+                } 
+                s2 = a.mat[i][j]-s2;
+                s1 += s2*s2;
+            }
                 diff += sqrt(s1);
-            }}
+        }
       // }
    //}
     return diff;        
@@ -221,7 +238,7 @@ int main(int argc, char** argv)
     execution_time = omp_get_wtime() - time;
     cout << "Execution time for LU decomp: " << execution_time << endl;
 
-    //diff = check_diff(a,l,u,n,nworkers);
+    diff = check_diff(a,l,u,n,nworkers);
     execution_time = omp_get_wtime() - time;
     cout<<"Execution time with checking diff: " << execution_time << endl;
     
@@ -231,7 +248,7 @@ int main(int argc, char** argv)
         cout << "L Matrix: " << endl;
         print_matrix(l);
         cout << "U Matrix:" << endl;
-        print_matrix(u);
+        print_transpose_matrix(u);
     }
 
     cout << "Total time: " << execution_time << " threads: " << nworkers << " diff: " << diff << endl;
