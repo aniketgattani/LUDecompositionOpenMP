@@ -102,15 +102,15 @@ void lu_decomp(matrix &a, matrix &l, matrix &u, int n, int nworkers)
 
     a.rows = n;
     a.cols = n;
-    a.mat = new double*[n];
+    a.mat = (double**)malloc(sizeof(double*)*n);
     
     l.rows = n;
     l.cols = n;
-    l.mat = new double*[n];
+    l.mat = (double**)malloc(sizeof(double*)*n);
 
     u.rows = n;
     u.cols = n;
-    u.mat = new double*[n];
+    u.mat = (double**)malloc(sizeof(double*)*n);
 
     #pragma omp parallel default(none) shared(a, l, u, n, nworkers)
     {
@@ -129,10 +129,15 @@ void lu_decomp(matrix &a, matrix &l, matrix &u, int n, int nworkers)
         for (int ii = 0; ii < nworkers; ++ii){
             for(int i = ii; i < n; i += nworkers){
                 srand(i+1);
-                l.mat[i][i]=1;
+                l.mat[i] = (double*)malloc(sizeof(double)*n); 
+                u.mat[i] = (double*)malloc(sizeof(double)*n); 
+                a.mat[i] = (double*)malloc(sizeof(double)*n); 
                 for (int j = 0; j < n; j++){
                     a.mat[i][j] = ((rand()%100)+1);
+        		    u.mat[i][j] = 0;
+        		    l.mat[i][j] = 0;
                 }
+                l.mat[i][i]=1;
             } 
         }   
     }  
@@ -193,7 +198,7 @@ double check_diff(matrix &a, matrix &l, matrix &u, int n, int nworkers){
     //{
 
         //{
-            //#pragma omp taskloop reduction(+: diff)
+        #pragma omp parallel for shared(a,l,u,n,nworkers) schedule(static) reduction(+: diff)
         for(int i = 0; i < n; i++){ 
             double s1=0;
                 //#pragma omp parallel for reduction(+: s1)
@@ -221,11 +226,13 @@ int main(int argc, char** argv)
     int n;
     int nworkers;
     int VERBOSE = 0;
+    int DIFF = 0;
     
     // parse the input
     n = atoi(argv[1]);
     nworkers = atoi(argv[2]);
     if(argc >= 4 ) VERBOSE = atoi(argv[3]);
+    if(argc >= 5) DIFF = atoi(argv[4]);
     
      
     matrix a;
@@ -238,7 +245,9 @@ int main(int argc, char** argv)
     execution_time = omp_get_wtime() - time;
     cout << "Execution time for LU decomp: " << execution_time << endl;
 
-    diff = check_diff(a,l,u,n,nworkers);
+    if(DIFF){
+    	diff = check_diff(a,l,u,n,nworkers);
+    }
     execution_time = omp_get_wtime() - time;
     cout<<"Execution time with checking diff: " << execution_time << endl;
     

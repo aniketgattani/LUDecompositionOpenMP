@@ -3,7 +3,7 @@ EXEC=lu-omp
 OBJ =  $(EXEC) $(EXEC)-debug $(EXEC)-serial
 
 MATRIX_SIZE=1000
-MATRIX_CHECK_SIZE=2000
+MATRIX_HPC_SIZE=7000
 MATRIX_BLOCK_SIZE = 100
 W :=`grep processor /proc/cpuinfo | wc -l`
 
@@ -46,10 +46,10 @@ check: $(EXEC)
 	$(CHECKER) ./$(EXEC) $(MATRIX_SIZE) $(W)
 
 #run the hpc checker
-runp-hpc: $(EXEC) 
+runp-hpc: $(EXEC)
 	@echo use make runp-hpc W=nworkers
-	@/bin/rm -rf $(EXEC).m $(EXEC).d
-	$(XX) hpcrun -e REALTIME@1000 -t -o $(EXEC).m ./$(EXEC)  $(MATRIX_CHECK_SIZE) $(W) 
+	@/bin/rm -rf $(EXEC).m $(EXEC).d $(EXEC).hpcstruct
+	$(XX) hpcrun -e ivb_ep::MEM_LOAD_UOPS_LLC_MISS_RETIRED:REMOTE_DRAM -e ivb_ep::MEM_LOAD_UOPS_LLC_MISS_RETIRED:LOCAL_DRAM -t -o $(EXEC).m ./$(EXEC)  $(MATRIX_HPC_SIZE) $(W) 
 	hpcstruct $(EXEC)
 	hpcprof -S $(EXEC).hpcstruct -o $(EXEC).d $(EXEC).m
 	hpcviewer $(EXEC).d 
