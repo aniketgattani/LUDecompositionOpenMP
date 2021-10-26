@@ -113,13 +113,13 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &l, matrix &u_t, int n, int nwor
     #pragma omp parallel for schedule(static) default(none) shared(a, a_org, l, u_t, n, nworkers)
     for (int w = 0; w < nworkers; w++){
         for(int i = w; i < n; i += nworkers){
-            srand(i+1);
+            unsigned int random = i;
             l.mat[i] = (double*)malloc(sizeof(double)*n); 
             u_t.mat[i] = (double*)malloc(sizeof(double)*n); 
             a.mat[i] = (double*)malloc(sizeof(double)*n); 
             a_org.mat[i] = (double*)malloc(sizeof(double)*n);
             for (int j = 0; j < n; j++){
-                a.mat[i][j] = ((rand()%100)+1);
+                a.mat[i][j] = (rand_r(&random)%100+1);
                 a_org.mat[i][j] = a.mat[i][j];
     		    u_t.mat[i][j] = 0;
     		    l.mat[i][j] = 0;
