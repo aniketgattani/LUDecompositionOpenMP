@@ -48,7 +48,7 @@ void print_transpose_matrix(matrix &a){
 void initialise_matrix(matrix &a, int n, int m){
     a.rows = n;
     a.cols = m;
-    a.mat = (double**)malloc(sizeof(double*)*m);
+    a.mat = (double**)malloc(sizeof(double*)*n);
 }
 
 /*
@@ -92,7 +92,7 @@ void swap(matrix &a, int x, int y){
     l is lower triangular
     u_t is the transpose of an upper triangular matrix 
 */
-void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, matrix &u_t, int n, int nworkers)
+void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, int n, int nworkers)
 {   
     omp_set_num_threads(nworkers);
 
@@ -100,7 +100,6 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, matrix &u_t, int 
     initialise_matrix(a_org, n, n);
     initialise_matrix(p, n, 1);
     initialise_matrix(l, n, n);
-    initialise_matrix(u_t, n, n);
     
     /*
         initializing the matrices. We are trying to perform row-wise computations.
@@ -114,19 +113,17 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, matrix &u_t, int 
         Thread 1 first touches the rows 1,5,9,13 ......   
     */
 
-    #pragma omp parallel for schedule(static) default(none) shared(a, a_org, p, l, u_t, n, nworkers)
+    #pragma omp parallel for schedule(static) default(none) shared(a, a_org, p, l, n, nworkers)
     for (int w = 0; w < nworkers; w++){
         for(int i = w; i < n; i += nworkers){
             unsigned int random = i;
-            l.mat[i] = (double*)malloc(sizeof(double)*n); 
-            u_t.mat[i] = (double*)malloc(sizeof(double)*n); 
+            l.mat[i] = (double*)malloc(sizeof(double)*n);  
             a.mat[i] = (double*)malloc(sizeof(double)*n); 
             a_org.mat[i] = (double*)malloc(sizeof(double)*n); 
             p.mat[i] = (double*)malloc(sizeof(double)*1);
             for (int j = 0; j < n; j++){
                 a.mat[i][j] = (rand_r(&random)%100+1);
                 a_org.mat[i][j] = a.mat[i][j];
-                u_t.mat[i][j] = 0;
     		    l.mat[i][j] = 0;
             }
             *p.mat[i] = i;
@@ -164,26 +161,23 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, matrix &u_t, int 
             *p.mat[max_row] = temp;
         }
 
-        u_t.mat[i][i] = a.mat[i][i];
-
         /* 
             diving work on rows assigned during allocation.
             In case when number of workers are more than number of rows below ith row,
             we should redivide the remaining work. This isn't the most cache-efficient allocation 
             but when number of workers are <<< size of matrix. So this isn't a problem.
         */
-        #pragma omp parallel for default(none) shared(a, l, u_t, n, i, nworkers) schedule(static) 
+        #pragma omp parallel for default(none) shared(a, l, n, i, nworkers) schedule(static) 
         for (int w = 0; w < min(n-i, nworkers); w++){
             int u_w = min(n-i, nworkers);
             int start = ((i+1)/u_w)*u_w + w;
             if(start < (i+1)) start += u_w;
             for(int j = start ; j < n; j += u_w){
-                l.mat[j][i] = a.mat[j][i]/u_t.mat[i][i];
-                u_t.mat[j][i] = a.mat[i][j];
+                l.mat[j][i] = a.mat[j][i]/a.mat[i][i];
             }
         }        	 
             
-        #pragma omp parallel for default(none) shared(a, l, u_t, n, i, nworkers) schedule(static)
+        #pragma omp parallel for default(none) shared(a, l, n, i, nworkers) schedule(static)
         for (int w = 0; w < min(n-i, nworkers); w++){
             int u_w = min(n-i, nworkers);
             int start = ((i+1)/u_w)*u_w + w;
@@ -207,7 +201,7 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, matrix &u_t, int 
 /* 
     checking L2,1 norm between a, l, u
 */
-double check_diff(matrix &a, matrix &p, matrix &l, matrix &u_t, int n, int nworkers){
+double check_diff(matrix &a, matrix &p, matrix &l, matrix &u, int n, int nworkers){
     
     omp_set_num_threads(nworkers);
     
@@ -217,13 +211,13 @@ double check_diff(matrix &a, matrix &p, matrix &l, matrix &u_t, int n, int nwork
         row_diff is the sqrt of sum of squares of differences between A[i][j] and LU[i][j] for one row.
         tot_diff is sum of all row_diff        
     */
-    #pragma omp parallel for shared(a, p, l, u_t, n, nworkers) schedule(static) reduction(+: tot_diff)
+    #pragma omp parallel for shared(a, p, l, u, n, nworkers) schedule(static) reduction(+: tot_diff)
     for(int i = 0; i < n; i++){ 
         double row_diff = 0;
         for(int j=0; j<n; j++){
             double diff = 0;
-            for(int k=0; k<n; k++){
-                diff += l.mat[i][k] * u_t.mat[j][k]; 
+            for(int k=0; k<n and k<=j; k++){
+                diff += l.mat[i][k] * u.mat[k][j]; 
             } 
             int t = *p.mat[i];
             diff -= a.mat[t][j];
@@ -256,15 +250,15 @@ int main(int argc, char** argv)
     matrix a;
     matrix l;
     /* u_t is the u transpose matrix */
-    matrix u_t;
+    //matrix u_t;
 
     time = omp_get_wtime();
-    lu_decomp(a, a_org, p, l, u_t, matrix_size, nworkers);
+    lu_decomp(a, a_org, p, l, matrix_size, nworkers);
     execution_time = omp_get_wtime() - time;
     cout << "Execution time for LU decomp: " << execution_time << endl;
 
     if(DIFF){
-    	diff = check_diff(a_org, p, l, u_t, matrix_size, nworkers);
+    	diff = check_diff(a_org, p, l, a, matrix_size, nworkers);
     }
     execution_time = omp_get_wtime() - time;
     cout<<"Execution time with checking diff: " << execution_time << endl;
@@ -273,11 +267,11 @@ int main(int argc, char** argv)
         cout << "A Matrix:" << endl;
         print_matrix(p);    
         cout << "PA Matrix:" << endl;
-        print_matrix(a);    
+        print_matrix(p);    
         cout << "L Matrix:" << endl;
         print_matrix(l);
         cout << "U Matrix:" << endl;
-        print_transpose_matrix(u_t);
+        print_transpose_matrix(a);
     }
 
     cout << "Total time: " << execution_time << " threads: " << nworkers << " diff: " << diff << endl;
