@@ -141,10 +141,10 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, int n, int nworke
     for (int i = 0; i < n; i++){
 
         int max_row = i;
-        double max_val = a.mat[i][i];
+        double max_val = abs(a.mat[i][i]);
         for(int j = i; j < n; j++){
-            if(max_val < a.mat[j][i]){
-                max_val = a.mat[j][i];
+            if(max_val < abs(a.mat[j][i])){
+                max_val = abs(a.mat[j][i]);
                 max_row = j;    
             }
         }
@@ -274,6 +274,6 @@ int main(int argc, char** argv)
         print_transpose_matrix(a);
     }
 
-    cout << "Total time: " << execution_time << " threads: " << nworkers << " diff: " << diff << endl;
+    cout << "Total time: " << execution_time << " matrix size: " << matrix_size << " threads: " << nworkers << " diff: " << diff << endl;
     return 0;
 }
