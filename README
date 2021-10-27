@@ -14,7 +14,7 @@ you log in:
 Contents of this directory
 ---------------------------
 
-  interactive.sh: 
+  ./lu-decomposition/interactive.sh: 
     a command that you can source to get a command line prompt
     in the interactive queue on a compute node
 
@@ -22,7 +22,7 @@ Contents of this directory
 
       source interactive.sh
 
-  reservation.sh: 
+  ./lu-decomposition/reservation.sh: 
     a command that you can source to get a command line prompt
     in the interactive queue on a compute node using the class
     reservation
@@ -31,7 +31,7 @@ Contents of this directory
 
       source reservation.sh
 
-  display.sh:
+  ./lu-decomposition/display.sh:
     to understand thread affinity, execute the command below to set your 
     environment variables to display information about OpenMP thread bindings.
     when you run programs with these settings, the OpenMP runtime will 
@@ -41,9 +41,19 @@ Contents of this directory
 
       source display.sh
 
-  lu-omp.cpp: template for OpenMP solution
+  ./lu-decomposition/lu-omp.cpp: template for OpenMP solution
+  
+    usage:
+       
+       make # builds your code
+       ./lu-omp matrix_size workers print_matrix print_diff 
+       		# runs parallel version
+       		# matrix_size is the size of the matrix A
+		# workers is the number of openmp threads to execute LU decomposition on
+		# print_matrix is an int 0/1 to print the corresponding matrices obtained after decomposition. Default = 0
+		# print_diff is an int 0/1 to print the L2,1 Norm. Default = 0
 
-  Makefile:
+  ./lu-decomposition/Makefile:
     a Makefile that includes recipes for building and running your program
 
     usage:
@@ -52,10 +62,15 @@ Contents of this directory
       make runp # runs a parallel version of your code on W workers
       make runs # runs a serial version of your code on one worker
       make check # runs your parallel code with Intel Thread Checker
+      make runp-hpc # runs a parallel version with hpctoolkit collecting the events MEM_LOAD_UOPS_LLC_MISS_RETIRED for REMOTE_DRAM and LOCAL_DRAM 
+      	with matrix size = 7000 and workers = available threads
 
-  submit.sbatch:
+  ./lu-decomposition/submit.sbatch:
     a script that you can use to launch a batch job that will execute 
     a series of tests on 1..32 threads on a compute node
 
     usage:
         sbatch submit.sbatch
+	
+  LU Decomposition report.pdf:
+     report for the project
