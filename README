@@ -45,7 +45,7 @@ Contents of this directory
   
     usage:
        
-       make # builds your code
+       make
        ./lu-omp matrix_size workers print_matrix print_diff 
        		# runs parallel version
        		# matrix_size is the size of the matrix A
