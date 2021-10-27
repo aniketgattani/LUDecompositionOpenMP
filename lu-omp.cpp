@@ -171,27 +171,27 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, int n, int nworke
             we should redivide the remaining work. This isn't the most cache-efficient allocation 
             but this happens when number of workers are <<< size of matrix. So this isn't a problem.
         */ 
-            #pragma omp parallel for default(none) schedule(static) shared(a, l, n, i, nworkers) 
-            for (int w = 0; w < min(n-i, nworkers); w++){
-                int u_w = min(n-i, nworkers);
-                int start = ((i+1)/u_w)*u_w + w;
-                if(start < (i+1)) start += u_w;
-                for(int j = start ; j < n; j += u_w){
-                    l.mat[j][i] = a.mat[j][i]/a.mat[i][i];
-                }
+        #pragma omp parallel for default(none) schedule(static) shared(a, l, n, i, nworkers) 
+        for (int w = 0; w < min(n-i, nworkers); w++){
+            int u_w = min(n-i, nworkers);
+            int start = ((i+1)/u_w)*u_w + w;
+            if(start < (i+1)) start += u_w;
+            for(int j = start ; j < n; j += u_w){
+                l.mat[j][i] = a.mat[j][i]/a.mat[i][i];
             }
+        }
 
-            #pragma omp parallel for default(none) schedule(static) shared(a, l, n, i, nworkers) 
-            for (int w = 0; w < min(n-i, nworkers); w++){
-                int u_w = min(n-i, nworkers);
-                int start = ((i+1)/u_w)*u_w + w;
-                if(start < i+1) start += u_w;
-                for(int j = start ; j < n; j += u_w){
-                    for (int k = i+1; k < n; k++){
-                        a.mat[j][k] -= ((l.mat[j][i] * a.mat[i][k]));
-                    }
+        #pragma omp parallel for default(none) schedule(static) shared(a, l, n, i, nworkers) 
+        for (int w = 0; w < min(n-i, nworkers); w++){
+            int u_w = min(n-i, nworkers);
+            int start = ((i+1)/u_w)*u_w + w;
+            if(start < i+1) start += u_w;
+            for(int j = start ; j < n; j += u_w){
+                for (int k = i+1; k < n; k++){
+                    a.mat[j][k] -= ((l.mat[j][i] * a.mat[i][k]));
                 }
             }
+        }
     }
 }
 
