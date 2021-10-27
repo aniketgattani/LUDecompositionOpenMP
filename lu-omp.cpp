@@ -170,10 +170,8 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, int n, int nworke
             In case when number of workers are more than number of rows below ith row,
             we should redivide the remaining work. This isn't the most cache-efficient allocation 
             but this happens when number of workers are <<< size of matrix. So this isn't a problem.
-        */
-        #pragma omp parallel default(none) shared(a, l, n, i, nworkers) 
-        {
-            #pragma omp for schedule(static) 
+        */ 
+            #pragma omp parallel for default(none) schedule(static) shared(a, l, n, i, nworkers) 
             for (int w = 0; w < min(n-i, nworkers); w++){
                 int u_w = min(n-i, nworkers);
                 int start = ((i+1)/u_w)*u_w + w;
@@ -183,7 +181,7 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, int n, int nworke
                 }
             }
 
-            #pragma omp for schedule(static)     
+            #pragma omp parallel for default(none) schedule(static) shared(a, l, n, i, nworkers) 
             for (int w = 0; w < min(n-i, nworkers); w++){
                 int u_w = min(n-i, nworkers);
                 int start = ((i+1)/u_w)*u_w + w;
@@ -194,7 +192,6 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, int n, int nworke
                     }
                 }
             }
-        }
     }
 }
 
