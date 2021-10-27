@@ -28,14 +28,19 @@ void print_matrix(matrix &a){
     }
 }
 
-/* print the transpose matrix. Useful for printing transpose(u) */
-void print_transpose_matrix(matrix &a){
+/* print the upper_triangular part of the matrix */
+void print_upper_triangular_matrix(matrix &a){
     int n = a.rows;
     int m = a.cols;
     cout<<"[";
     for (int i = 0; i < n; i++){
         cout<<"[ ";
-        for (int j = 0; j < m-1; j++){ 
+        
+        for (int j = 0; j < i; j++){ 
+            cout << 0 << " ,";
+        }
+
+        for (int j = i; j < m-1; j++){ 
             cout << setprecision(PRECISION) << a.mat[j][i] << " ,";
         }
         cout << setprecision(PRECISION) << a.mat[m-1][i] << " ]";
@@ -44,37 +49,13 @@ void print_transpose_matrix(matrix &a){
     }
 }
 
-
-void initialise_matrix(matrix &a, int n, int m){
+/* alloc matrix as a series of n double*. n is number of matrix rows */
+void initialise_matrix_rows(matrix &a, int n, int m){
     a.rows = n;
     a.cols = m;
     a.mat = (double**)malloc(sizeof(double*)*n);
 }
 
-/*
-    a stores the reordered matrix and
-    p stores the original matrix 
-    find the max value from a set of columns and replace the two rows
-    since we are using a double pointer for matrices we can just swap the pointers which saves time
-*/
-void perform_pivoting(matrix &a, matrix &p, int n){
-    for(int i = 0; i < n; i++){
-        double max = 0;
-        int maxi = 0;
-        for(int j = i; j < n; j++){
-            if(max < a.mat[j][i]){
-                max = a.mat[j][i];
-                maxi = j;    
-            }
-        }
-
-        if(maxi!=i){
-            double *temp = a.mat[i];
-            a.mat[i] = a.mat[maxi];
-            a.mat[maxi] = temp; 
-        }
-    }
-}
 
 void swap(matrix &a, int x, int y){
     double *temp = a.mat[x];
@@ -82,24 +63,64 @@ void swap(matrix &a, int x, int y){
     a.mat[y] = temp;
 }
 
+/*
+    * a stores the reordered matrix and
+    * l is the lower triangular matrix
+    * p is the permutation matrix
+    * pivot_index is the row index on which we have to pivot upon
+    * n is matrix size
+    
+    * We find the max value from a set of columns and swap the two rows.
+    * Since we are using a double pointer for matrices we can just swap the pointers which saves time
+*/
+void perform_pivoting(matrix &a, matrix &l, matrix &p, int pivot_index, int n){
+    int max_row = pivot_index;
+    double max_val = abs(a.mat[pivot_index][pivot_index]);
+    for(int j = pivot_index; j < n; j++){
+        if(max_val < abs(a.mat[j][pivot_index])){
+            max_val = abs(a.mat[j][pivot_index]);
+            max_row = j;    
+        }
+    }
+
+    if(max_row != pivot_index){
+        swap(a, pivot_index, max_row);
+        for(int j=0; j < pivot_index; j++) {
+            double temp =  l.mat[pivot_index][j];
+            l.mat[pivot_index][j] = l.mat[max_row][j];
+            l.mat[max_row][j] = temp;
+        }
+        double temp =  *p.mat[pivot_index];
+        *p.mat[pivot_index] = *p.mat[max_row];
+        *p.mat[max_row] = temp;
+    }
+}
+
+
 /*  
-    perform the lu decomposition
-    Inputs: 
-        matrices: a, l, u_t 
+    * perform the lu decomposition
+    * Inputs: 
+        matrices: a, a_org, l, p
         n: matrix size 
         nworkers: no of threads
-    Updates the matrices l and u_t
-    l is lower triangular
-    u_t is the transpose of an upper triangular matrix 
+        l is lower triangular matrix
+        a is the matrix which is initialized with random values.
+        a_org is the original a matrix without pivoting
+        p is a 1-D permutation matrix and stores the pivoting info. p[i] signifies the column number = 1 for row = i for a sparse permutation matrix 
+    
+    * Updates the matrices l and a
+    * let the upper triangular portion of a be u, 
+        then l X u = p X a_org
+      
 */
 void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, int n, int nworkers)
 {   
     omp_set_num_threads(nworkers);
 
-    initialise_matrix(a, n, n);
-    initialise_matrix(a_org, n, n);
-    initialise_matrix(p, n, 1);
-    initialise_matrix(l, n, n);
+    initialise_matrix_rows(a, n, n);
+    initialise_matrix_rows(a_org, n, n);
+    initialise_matrix_rows(p, n, 1);
+    initialise_matrix_rows(l, n, n);
     
     /*
         initializing the matrices. We are trying to perform row-wise computations.
@@ -110,7 +131,9 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, int n, int nworke
 
         Suppose there are 4 workers. 
         Thread 0 first touches the rows 0,4,8,12 ......
-        Thread 1 first touches the rows 1,5,9,13 ......   
+        Thread 1 first touches the rows 1,5,9,13 ......  
+        Thread 2 first touches the rows 2,6,10,14 ......
+        Thread 3 first touches the rows 3,7,11,15 ......  
     */
 
     #pragma omp parallel for schedule(static) default(none) shared(a, a_org, p, l, n, nworkers)
@@ -131,66 +154,44 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, int n, int nworke
         } 
     }   
      
-    /*
-        Perform row pivoting. This can lead to a little performance overhead
-        since some of the rows are reshuffled but row pivoting is not a significant
-        portion of computation and not too many rows are swapped in every computation.
-    */
-    // perform_pivoting(a, p, n);
-        
+            
     for (int i = 0; i < n; i++){
 
-        int max_row = i;
-        double max_val = abs(a.mat[i][i]);
-        for(int j = i; j < n; j++){
-            if(max_val < abs(a.mat[j][i])){
-                max_val = abs(a.mat[j][i]);
-                max_row = j;    
-            }
-        }
-
-        if(max_row != i){
-            swap(a, i, max_row);
-            for(int j=0; j < i; j++) {
-                double temp =  l.mat[i][j];
-                l.mat[i][j] = l.mat[max_row][j];
-                l.mat[max_row][j] = temp;
-            }
-            double temp =  *p.mat[i];
-            *p.mat[i] = *p.mat[max_row];
-            *p.mat[max_row] = temp;
-        }
+        /*
+            Perform row pivoting. This can lead to a little performance overhead
+            since some of the rows are reshuffled but row pivoting is not a significant
+            portion of computation and not too many rows are swapped in every computation.
+        */
+        perform_pivoting(a, l, p, i, n);
+        
 
         /* 
             diving work on rows assigned during allocation.
             In case when number of workers are more than number of rows below ith row,
             we should redivide the remaining work. This isn't the most cache-efficient allocation 
-            but when number of workers are <<< size of matrix. So this isn't a problem.
+            but this happens when number of workers are <<< size of matrix. So this isn't a problem.
         */
-        #pragma omp parallel for default(none) shared(a, l, n, i, nworkers) schedule(static) 
-        for (int w = 0; w < min(n-i, nworkers); w++){
-            int u_w = min(n-i, nworkers);
-            int start = ((i+1)/u_w)*u_w + w;
-            if(start < (i+1)) start += u_w;
-            for(int j = start ; j < n; j += u_w){
-                l.mat[j][i] = a.mat[j][i]/a.mat[i][i];
+        #pragma omp parallel default(none) shared(a, l, n, i, nworkers) 
+        {
+            #pragma omp for schedule(static) 
+            for (int w = 0; w < min(n-i, nworkers); w++){
+                int u_w = min(n-i, nworkers);
+                int start = ((i+1)/u_w)*u_w + w;
+                if(start < (i+1)) start += u_w;
+                for(int j = start ; j < n; j += u_w){
+                    l.mat[j][i] = a.mat[j][i]/a.mat[i][i];
+                }
             }
-        }        	 
-            
-        #pragma omp parallel for default(none) shared(a, l, n, i, nworkers) schedule(static)
-        for (int w = 0; w < min(n-i, nworkers); w++){
-            int u_w = min(n-i, nworkers);
-            int start = ((i+1)/u_w)*u_w + w;
-            if(start < i+1) start += u_w;
-            for(int j = start ; j < n; j += u_w){
-                /*  
-                    the access pattern here uses l in row pattern. 
-                    Hence, we should use l as it is. Again, u is used in
-                    column pattern, so using u_t makes sense.
-                */
 
-                for (int k = i+1; k < n; k++){
-                    a.mat[j][k] -= ((l.mat[j][i] * a.mat[i][k]));
+            #pragma omp for schedule(static)     
+            for (int w = 0; w < min(n-i, nworkers); w++){
+                int u_w = min(n-i, nworkers);
+                int start = ((i+1)/u_w)*u_w + w;
+                if(start < i+1) start += u_w;
+                for(int j = start ; j < n; j += u_w){
+                    for (int k = i+1; k < n; k++){
+                        a.mat[j][k] -= ((l.mat[j][i] * a.mat[i][k]));
+                    }
                 }
             }
         }
@@ -199,7 +200,7 @@ void lu_decomp(matrix &a, matrix &a_org, matrix &p, matrix &l, int n, int nworke
 
 
 /* 
-    checking L2,1 norm between a, l, u
+    checking L2,1 norm between p X a, l X u
 */
 double check_diff(matrix &a, matrix &p, matrix &l, matrix &u, int n, int nworkers){
     
@@ -208,7 +209,7 @@ double check_diff(matrix &a, matrix &p, matrix &l, matrix &u, int n, int nworker
     double tot_diff = 0;
     
     /*
-        row_diff is the sqrt of sum of squares of differences between A[i][j] and LU[i][j] for one row.
+        row_diff is the sqrt of sum of squares of differences between pa[i][j] and lu[i][j] for row i and j = 0 to N.
         tot_diff is sum of all row_diff        
     */
     #pragma omp parallel for shared(a, p, l, u, n, nworkers) schedule(static) reduction(+: tot_diff)
@@ -231,7 +232,7 @@ double check_diff(matrix &a, matrix &p, matrix &l, matrix &u, int n, int nworker
 
 int main(int argc, char** argv)
 {
-    double time;
+    double clock_time;
     double execution_time;
     double diff;
     int matrix_size;
@@ -249,29 +250,27 @@ int main(int argc, char** argv)
     matrix p;
     matrix a;
     matrix l;
-    /* u_t is the u transpose matrix */
-    //matrix u_t;
-
-    time = omp_get_wtime();
+    
+    clock_time = omp_get_wtime();
     lu_decomp(a, a_org, p, l, matrix_size, nworkers);
-    execution_time = omp_get_wtime() - time;
+    execution_time = omp_get_wtime() - clock_time;
     cout << "Execution time for LU decomp: " << execution_time << endl;
 
     if(DIFF){
     	diff = check_diff(a_org, p, l, a, matrix_size, nworkers);
     }
-    execution_time = omp_get_wtime() - time;
+    execution_time = omp_get_wtime() - clock_time;
     cout<<"Execution time with checking diff: " << execution_time << endl;
     
     if(VERBOSE){
         cout << "A Matrix:" << endl;
-        print_matrix(p);    
-        cout << "PA Matrix:" << endl;
+        print_matrix(a_org);    
+        cout << "P Matrix:" << endl;
         print_matrix(p);    
         cout << "L Matrix:" << endl;
         print_matrix(l);
         cout << "U Matrix:" << endl;
-        print_transpose_matrix(a);
+        print_upper_triangular_matrix(a);
     }
 
     cout << "Total time: " << execution_time << " matrix size: " << matrix_size << " threads: " << nworkers << " diff: " << diff << endl;
